@@ -1,0 +1,25 @@
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Generated tool outputs
+artifacts/
+logs/
+sample.txt
+sample.sanitized.pdf
+sample.sanitized.txt
+sample.report.json
+case_*.sanitized.pdf
+case_*.sanitized.txt
+case_*.report.json
+
+# Standard run folders (keep structure only)
+runs/output/*
+!runs/output/.gitkeep
+runs/reports/*
+!runs/reports/.gitkeep
+runs/logs/*
+!runs/logs/.gitkeep
+runs/archive/*
+!runs/archive/.gitkeep
+runs/batch_summary.csv

@@ -1,0 +1,2 @@
+[console_scripts]
+anon-tool = anon_tool.cli:main

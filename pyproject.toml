@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=69.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anon-tool"
+version = "0.1.0"
+description = "Policy-compliant PDF/TXT anonymizer for CRM case summaries."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "pypdf>=4.2.0",
+  "reportlab>=4.2.0",
+  "PyYAML>=6.0.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2.0"]
+
+[project.scripts]
+anon-tool = "anon_tool.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
