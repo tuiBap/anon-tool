@@ -64,6 +64,11 @@ Process recursively and fail on warnings:
 .\scripts\run_batch.ps1 -Recurse -FailOnWarnings
 ```
 
+Archive successfully processed source PDFs into `runs/archive`:
+```powershell
+.\scripts\run_batch.ps1 -MoveToArchiveOnPass
+```
+
 Outputs:
 - Sanitized files: `runs/output`
 - Reports: `runs/reports`

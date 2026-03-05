@@ -43,6 +43,50 @@ anon-tool redact \
 - `--also-write-txt <path>`
 - `--config <policy_rules.yaml>`
 
+## One-Command Validation
+From repo root on PowerShell:
+```powershell
+.\scripts\validate_case.ps1
+```
+
+With a real file:
+```powershell
+.\scripts\validate_case.ps1 -InputPath "C:\path\case.pdf" -FailOnWarnings
+```
+
+## Standard Run Folder
+Use this structure for repeatable runs:
+```text
+runs/
+  input/      # place raw PDF files here
+  output/     # sanitized pdf/txt
+  reports/    # json reports
+  logs/       # redaction logs
+  archive/    # optional post-run archive
+```
+
+## Batch Runner
+Process all PDFs in `runs/input`:
+```powershell
+.\scripts\run_batch.ps1
+```
+
+Process recursively and fail on warnings:
+```powershell
+.\scripts\run_batch.ps1 -Recurse -FailOnWarnings
+```
+
+Archive successfully processed source PDFs into `runs/archive`:
+```powershell
+.\scripts\run_batch.ps1 -MoveToArchiveOnPass
+```
+
+Outputs:
+- Sanitized files: `runs/output`
+- Reports: `runs/reports`
+- Logs: `runs/logs`
+- Batch summary CSV: `runs/batch_summary.csv`
+
 ## Notes
 - The output PDF is a normalized text rendering of the sanitized content.
 - If detailed logging is enabled with raw values, logs may contain sensitive source data.

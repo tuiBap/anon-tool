@@ -3,10 +3,12 @@ param(
   [string]$OutputDir = ".\runs\output",
   [string]$ReportDir = ".\runs\reports",
   [string]$LogDir = ".\runs\logs",
+  [string]$ArchiveDir = ".\runs\archive",
   [string]$SummaryCsv = ".\runs\batch_summary.csv",
   [switch]$Recurse,
   [switch]$FailOnWarnings,
-  [switch]$StopOnError
+  [switch]$StopOnError,
+  [switch]$MoveToArchiveOnPass
 )
 
 Set-StrictMode -Version Latest
@@ -29,7 +31,7 @@ if (-not (Test-Path -LiteralPath $InputDir)) {
   throw "InputDir does not exist: $InputDir"
 }
 
-New-Item -ItemType Directory -Force -Path $OutputDir,$ReportDir,$LogDir | Out-Null
+New-Item -ItemType Directory -Force -Path $OutputDir,$ReportDir,$LogDir,$ArchiveDir | Out-Null
 
 $searchArgs = @{
   LiteralPath = $InputDir
@@ -38,7 +40,7 @@ $searchArgs = @{
 }
 if ($Recurse) { $searchArgs["Recurse"] = $true }
 
-$pdfs = Get-ChildItem @searchArgs | Sort-Object FullName
+$pdfs = @(Get-ChildItem @searchArgs | Sort-Object FullName)
 if ($pdfs.Count -eq 0) {
   Write-Step "No PDF files found in $InputDir"
   exit 0
@@ -85,6 +87,16 @@ foreach ($pdf in $pdfs) {
       throw "Stopping on error for $($pdf.Name): $errorMessage"
     }
   }
+  elseif ($MoveToArchiveOnPass) {
+    $archiveTarget = Join-Path $ArchiveDir $pdf.Name
+    if (Test-Path -LiteralPath $archiveTarget) {
+      $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+      $name = [IO.Path]::GetFileNameWithoutExtension($pdf.Name)
+      $ext = [IO.Path]::GetExtension($pdf.Name)
+      $archiveTarget = Join-Path $ArchiveDir ("{0}_{1}{2}" -f $name, $stamp, $ext)
+    }
+    Move-Item -LiteralPath $pdf.FullName -Destination $archiveTarget -Force
+  }
 
   $results.Add([PSCustomObject]@{
     input_file = $pdf.FullName
@@ -124,4 +136,3 @@ if ($FailOnWarnings -and $withWarnings -gt 0) {
   exit 2
 }
 exit 0
-
