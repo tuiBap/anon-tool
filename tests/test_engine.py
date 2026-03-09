@@ -68,7 +68,113 @@ def test_residual_phone_scan_ignores_contract_style_ids() -> None:
     assert not any("phone_like" in item for item in result.residual_risk_checks)
 
 
+def test_does_not_redact_plain_reference_prose_as_customer_id() -> None:
+    lines = [
+        InputLine(
+            page=15,
+            line_no=21,
+            text="Do you have a reference? 6. Have you used a CA certificate or a Self-signed certificate?",
+        ),
+        InputLine(
+            page=26,
+            line_no=56,
+            text="This is for reference. Please also respond to the previous comment.",
+        ),
+        InputLine(
+            page=1,
+            line_no=3,
+            text="Entitlement Name ServiceContract SC-00998800-October/2025-Renewals",
+        ),
+    ]
+    result = redact_lines(lines, default_profile())
+    assert result.redacted_lines[0].text == lines[0].text
+    assert result.redacted_lines[1].text == lines[1].text
+    assert "[REDACTED_CUSTOMER_REF]" in result.redacted_lines[2].text
+
+
 def test_benign_not_classified_does_not_raise_uncertain_warning() -> None:
     lines = [InputLine(page=5, line_no=18, text="138.00 Not Classified")]
+    result = redact_lines(lines, default_profile())
+    assert not any(w.rule_id == "uncertain.context" for w in result.warnings)
+
+
+def test_preserves_kb_article_urls_even_on_customer_lines() -> None:
+    lines = [
+        InputLine(
+            page=2,
+            line_no=8,
+            text=(
+                "Customer update: https://portal.microfocus.com/s/article/KM000036664?language=en_US "
+                "Confirmed events were being consumed"
+            ),
+        )
+    ]
+    result = redact_lines(lines, default_profile())
+    output = result.redacted_lines[0].text
+    assert "https://portal.microfocus.com/s/article/KM000036664?language=en_US" in output
+    assert "[REDACTED_COMPANY]" not in output
+
+
+def test_preserves_case_status_history_lines() -> None:
+    lines = [
+        InputLine(
+            page=7,
+            line_no=13,
+            text="Changed Status from Pending Customer to Pending Support (New Activity).",
+        ),
+        InputLine(
+            page=7,
+            line_no=25,
+            text="Changed Status from Pending Support (New Activity) to Pending Customer.",
+        ),
+    ]
+    result = redact_lines(lines, default_profile())
+    assert result.redacted_lines[0].text == lines[0].text
+    assert result.redacted_lines[1].text == lines[1].text
+    assert not any(span.rule_id == "context.customer_company" for span in result.spans)
+
+
+def test_preserves_technical_phrase_that_looks_like_title_case_name() -> None:
+    lines = [
+        InputLine(page=115, line_no=40, text="Created By Database Connection Error"),
+        InputLine(page=115, line_no=41, text="Created By David Bush"),
+    ]
+    result = redact_lines(lines, default_profile())
+    assert result.redacted_lines[0].text == lines[0].text
+    assert result.redacted_lines[1].text == "Created By [REDACTED_PERSON]"
+
+
+def test_does_not_redact_ui_labels_as_person_names() -> None:
+    lines = [
+        InputLine(page=128, line_no=1, text="Stop Logger"),
+        InputLine(page=128, line_no=1, text="Demo Logs"),
+        InputLine(page=128, line_no=1, text="Error Installing Folder"),
+        InputLine(page=128, line_no=1, text="Additional Notes"),
+        InputLine(page=128, line_no=1, text="Global Technical Support"),
+        InputLine(page=128, line_no=2, text="Hi James"),
+        InputLine(page=128, line_no=2, text="Issue Summary"),
+        InputLine(page=127, line_no=6, text="Current Logger"),
+        InputLine(page=127, line_no=6, text="Unknown Source"),
+        InputLine(page=127, line_no=7, text="Hand Over"),
+    ]
+    result = redact_lines(lines, default_profile())
+    assert [line.text for line in result.redacted_lines] == [line.text for line in lines]
+    assert not any(span.rule_id == "context.name" for span in result.spans)
+
+
+def test_sensitive_installation_order_does_not_raise_uncertain_warning() -> None:
+    lines = [
+        InputLine(
+            page=13,
+            line_no=16,
+            text=(
+                "Good day As per from the customer as below: Could you please get the vendor confirm "
+                "which installer we should be installing now that we're getting this error? We are "
+                "following the new path previously given, but knowing how sensitive the installation "
+                "order is, and possibility of issues if done incorrectly, we want to avoid making any "
+                "assumptions."
+            ),
+        )
+    ]
     result = redact_lines(lines, default_profile())
     assert not any(w.rule_id == "uncertain.context" for w in result.warnings)

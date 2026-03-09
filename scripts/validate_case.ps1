@@ -1,6 +1,6 @@
 param(
   [string]$InputPath = "",
-  [string]$WorkDir = ".\artifacts",
+  [string]$WorkDir = "",
   [switch]$FailOnWarnings,
   [switch]$KeepGeneratedSample
 )
@@ -16,6 +16,31 @@ function Write-Step {
 function Test-CommandExists {
   param([string]$Name)
   return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Test-FileWritable {
+  param([string]$Path)
+
+  try {
+    $directory = Split-Path -Parent $Path
+    if ($directory -and -not (Test-Path -LiteralPath $directory)) {
+      New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+
+    if (Test-Path -LiteralPath $Path) {
+      $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+      $stream.Close()
+      return $true
+    }
+
+    $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+    $stream.Close()
+    Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    return $true
+  }
+  catch {
+    return $false
+  }
 }
 
 if (-not (Test-Path -LiteralPath ".\src\anon_tool\cli.py")) {
@@ -44,6 +69,11 @@ if (-not (Test-Path -LiteralPath $InputPath)) {
   throw "Input file not found: $InputPath"
 }
 
+if ([string]::IsNullOrWhiteSpace($WorkDir)) {
+  $resolvedInput = (Resolve-Path -LiteralPath $InputPath).Path
+  $WorkDir = Split-Path -Parent $resolvedInput
+}
+
 New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
 
 $stem = [IO.Path]::GetFileNameWithoutExtension($InputPath)
@@ -52,6 +82,12 @@ $outTxt = Join-Path $WorkDir "$stem.sanitized.txt"
 $outReport = Join-Path $WorkDir "$stem.report.json"
 $outLog = Join-Path $WorkDir "$stem.redaction.log"
 $warnThreshold = if ($FailOnWarnings) { 0 } else { 99999 }
+
+foreach ($path in @($outPdf, $outTxt, $outReport, $outLog)) {
+  if (-not (Test-FileWritable -Path $path)) {
+    throw "Output file is locked or not writable: $path. Close any open copy of this file and run again."
+  }
+}
 
 Write-Step "Running anonymizer CLI"
 $env:PYTHONPATH = "src"
@@ -64,6 +100,12 @@ python -m anon_tool.cli redact `
   --warn-threshold $warnThreshold
 
 if ($LASTEXITCODE -ne 0) {
+  if ($LASTEXITCODE -eq 1) {
+    $lockedPaths = @($outPdf, $outTxt, $outReport, $outLog) | Where-Object { -not (Test-FileWritable -Path $_) }
+    if ($lockedPaths.Count -gt 0) {
+      throw "One or more output files are locked. Close them and run again: $($lockedPaths -join ', ')"
+    }
+  }
   throw "CLI exited with code $LASTEXITCODE"
 }
 
@@ -121,4 +163,3 @@ if ($generatedSample -and -not $KeepGeneratedSample) {
 }
 
 exit 0
-

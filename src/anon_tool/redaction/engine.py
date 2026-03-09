@@ -121,28 +121,40 @@ def _overlaps_preserve(start: int, end: int, preserves: list[tuple[int, int]]) -
 
 
 def _detect_context_names(line: InputLine, profile: ProfileConfig) -> list[DetectedSpan]:
-    text_l = line.text.lower()
-    if not any(label in text_l for label in profile.name_context_labels):
-        return []
-
     spans: list[DetectedSpan] = []
-    for match in re.finditer(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b", line.text):
-        value = match.group(0)
-        # Avoid redacting common technical phrases.
-        if value.lower() in {"task manager", "operating system"}:
-            continue
-        spans.append(
-            DetectedSpan(
-                page=line.page,
-                line=line.line_no,
-                start=match.start(),
-                end=match.end(),
-                category="person_name",
-                confidence="medium",
-                rule_id="context.name",
-                original_text=value,
+    blocked_name_terms = {
+        "error",
+        "warning",
+        "exception",
+        "database",
+        "connection",
+        "service",
+        "server",
+        "console",
+        "manager",
+        "system",
+    }
+    for pattern in profile.name_context_patterns:
+        for match in pattern.finditer(line.text):
+            value = match.group("name")
+            if value.lower() in {"task manager", "operating system"}:
+                continue
+            if any(part.lower() in blocked_name_terms for part in value.split()):
+                continue
+            start = match.start("name")
+            end = match.end("name")
+            spans.append(
+                DetectedSpan(
+                    page=line.page,
+                    line=line.line_no,
+                    start=start,
+                    end=end,
+                    category="person_name",
+                    confidence="medium",
+                    rule_id="context.name",
+                    original_text=value,
+                )
             )
-        )
     return spans
 
 
@@ -178,28 +190,37 @@ def _detect_customer_company_context(line: InputLine, profile: ProfileConfig) ->
     text_l = text.lower()
     if "customer friendly product" in text_l:
         return []
+    if "changed status from" in text_l:
+        return []
     preserve_spans = _collect_preserve_spans(text, profile)
 
-    labels = [
+    strict_labels = [
         "customer name",
-        "customer",
         "company name",
+        "account name",
+    ]
+    generic_labels = [
+        "customer",
         "company",
         "organization",
         "org",
-        "account name",
         "account",
         "prospect",
     ]
     spans: list[DetectedSpan] = []
-    for label in labels:
+    for label in strict_labels + generic_labels:
         idx = text_l.find(label)
         if idx < 0:
             continue
         after = idx + len(label)
-        # Prefer redacting right-side value after delimiters.
+
+        # Generic labels are only safe to treat as field names when followed by an immediate delimiter.
+        strict_delimiter_required = label in generic_labels
         delim_positions = [p for p in (text.find(":", after), text.find("-", after), text.find("\t", after)) if p >= 0]
-        start = min(delim_positions) + 1 if delim_positions else after
+        nearby_delims = [p for p in delim_positions if p - after <= 2]
+        if strict_delimiter_required and not nearby_delims:
+            continue
+        start = min(nearby_delims if strict_delimiter_required else delim_positions) + 1 if delim_positions else after
         value = text[start:].strip()
         if not value:
             continue
@@ -259,7 +280,14 @@ def _detect_uncertain_line(
     line: InputLine, profile: ProfileConfig, existing_spans: list[DetectedSpan]
 ) -> ProcessingWarning | None:
     text_l = line.text.lower()
-    benign_phrases = ["not classified"]
+    benign_phrases = [
+        "not classified",
+        "sensitive the installation",
+        "sensitive installation",
+        "sensitive the order",
+        "sensitive order",
+        "sensitive path",
+    ]
     if any(phrase in text_l for phrase in benign_phrases):
         return None
     uncertain = any(k in text_l for k in profile.uncertain_keywords)

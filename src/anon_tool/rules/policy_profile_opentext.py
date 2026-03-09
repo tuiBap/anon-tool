@@ -23,7 +23,7 @@ class ProfileConfig:
     sensitive_keywords: list[str]
     uncertain_keywords: list[str]
     preserve_keywords: list[str]
-    name_context_labels: list[str]
+    name_context_patterns: list[Pattern[str]]
 
 
 def _compile(rule_id: str, category: str, placeholder: str, pattern: str, confidence: str = "high") -> PatternRule:
@@ -62,7 +62,7 @@ def default_profile() -> ProfileConfig:
             "contract.reference",
             "customer_id",
             "[REDACTED_CUSTOMER_REF]",
-            r"\b(?:ServiceContract|Contract|Entitlement|Reference)\b[^\n]{0,40}\b[A-Z0-9][A-Z0-9-]{5,}\b",
+            r"\b(?:ServiceContract|Contract|Entitlement)\b[^\n]{0,40}\b[A-Z0-9][A-Z0-9-]{5,}\b",
             confidence="medium",
         ),
         _compile(
@@ -83,6 +83,7 @@ def default_profile() -> ProfileConfig:
     preserve_patterns = [
         re.compile(r"\bCase\s*[:#-]?\s*\d{5,}\b", re.IGNORECASE),
         re.compile(r"\bOCT\d{3,}\b", re.IGNORECASE),
+        re.compile(r"https?://[^\s]*/article/KM\d{6,}[^\s]*", re.IGNORECASE),
     ]
 
     sensitive_keywords = [
@@ -128,13 +129,13 @@ def default_profile() -> ProfileConfig:
         "pending customer",
     ]
 
-    name_context_labels = [
-        "created by",
-        "last modified by",
-        "case owner",
-        "user",
-        "nse for",
-        "thanks,",
+    name_context_patterns = [
+        re.compile(r"\bCreated By\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"),
+        re.compile(r"\bLast Modified By\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"),
+        re.compile(r"\bCase Owner\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"),
+        re.compile(r"\bUser\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"),
+        re.compile(r"\bNSE for [^,]+,\s*(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"),
+        re.compile(r"\bThanks,\s*(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"),
     ]
 
     return ProfileConfig(
@@ -144,7 +145,7 @@ def default_profile() -> ProfileConfig:
         sensitive_keywords=sensitive_keywords,
         uncertain_keywords=uncertain_keywords,
         preserve_keywords=preserve_keywords,
-        name_context_labels=name_context_labels,
+        name_context_patterns=name_context_patterns,
     )
 
 
@@ -181,8 +182,6 @@ def load_profile(config_path: Path | None) -> ProfileConfig:
     sensitive_keywords = _merge_list(profile.sensitive_keywords, data.get("sensitive_keywords"))
     uncertain_keywords = _merge_list(profile.uncertain_keywords, data.get("uncertain_keywords"))
     preserve_keywords = _merge_list(profile.preserve_keywords, data.get("preserve_keywords"))
-    name_context_labels = _merge_list(profile.name_context_labels, data.get("name_context_labels"))
-
     return ProfileConfig(
         policy_profile=str(data.get("policy_profile") or profile.policy_profile),
         pattern_rules=merged_patterns,
@@ -190,7 +189,7 @@ def load_profile(config_path: Path | None) -> ProfileConfig:
         sensitive_keywords=sensitive_keywords,
         uncertain_keywords=uncertain_keywords,
         preserve_keywords=preserve_keywords,
-        name_context_labels=name_context_labels,
+        name_context_patterns=profile.name_context_patterns,
     )
 
 

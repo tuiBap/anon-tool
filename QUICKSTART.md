@@ -39,9 +39,15 @@ Use these repo folders:
 .\scripts\validate_case.ps1 -InputPath "C:\path\Case_12345678 ~ Salesforce - Unlimited Edition.pdf" -FailOnWarnings
 ```
 
+Important:
+- Use PowerShell parameter style with a single dash: `-InputPath`, `-FailOnWarnings`
+- Do not use double dashes (`--InputPath`) for `.ps1` script parameters
+
 Expected result:
 - `PASS`
 - `Warnings: 0` (because `-FailOnWarnings`)
+- Output files (sanitized PDF/TXT, report JSON, log) are written to the same folder as the input file by default.
+- Optional override: add `-WorkDir "C:\some\other\folder"`
 
 ## 6) Batch run for multiple PDFs
 Put PDFs in `runs/input`, then:
@@ -66,6 +72,40 @@ python -m anon_tool.cli redact `
   --warn-threshold 0
 ```
 
+### Optional convenience command from anywhere
+Install editable package so `anon-tool` command is available:
+```powershell
+python -m pip install -e .
+```
+
+Then use:
+```powershell
+anon-tool redact --input "C:\path\case.pdf" --output ".\runs\output\case.sanitized.pdf" --report ".\runs\reports\case.report.json" --also-write-txt ".\runs\output\case.sanitized.txt" --warn-threshold 0
+```
+
+### Optional PowerShell shortcut (recommended)
+Add a helper function so you do not need full script paths:
+1. Open your PowerShell profile:
+```powershell
+notepad $PROFILE
+```
+2. Add:
+```powershell
+function anon-validate {
+    param(
+        [Parameter(Mandatory=$true)][string]$InputPath,
+        [switch]$FailOnWarnings
+    )
+    & "C:\Users\dbush\Projects\anon-tool\anon-tool\scripts\validate_case.ps1" -InputPath $InputPath -FailOnWarnings:$FailOnWarnings
+}
+```
+3. Restart PowerShell (or run `. $PROFILE`)
+
+Now run from any folder:
+```powershell
+anon-validate -InputPath "C:\path\case.pdf" -FailOnWarnings
+```
+
 ## 8) Output review checklist
 - Confirm no direct personal/customer identifiers remain.
 - Confirm technical troubleshooting context is still readable.
@@ -76,6 +116,9 @@ python -m anon_tool.cli redact `
   - Run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
 - `No module named ...`:
   - Re-run `python -m pip install -e .[dev]`
+- `Input file not found: --InputPath`:
+  - You used `--InputPath` instead of `-InputPath`
+  - Re-run with single-dash PowerShell parameters
 - `CLI exited with code 2`:
   - Warning threshold exceeded (usually due to `-FailOnWarnings`)
   - Check `runs/reports/*.report.json` for warning details
@@ -83,4 +126,3 @@ python -m anon_tool.cli redact `
 ## 10) Security note
 Logs may contain sensitive source values by design for debugging.
 Treat files under `runs/logs` as sensitive.
-

@@ -42,6 +42,10 @@ With a real file:
 .\scripts\validate_case.ps1 -InputPath "C:\path\case.pdf" -FailOnWarnings
 ```
 
+Default output location for `validate_case.ps1`:
+- Sanitized PDF/TXT, report JSON, and log are written to the same directory as the input file.
+- Optional override: `-WorkDir "C:\some\other\folder"`
+
 ## Standard Run Folder
 Use this structure for repeatable runs:
 ```text
