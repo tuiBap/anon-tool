@@ -8,7 +8,8 @@ param(
   [switch]$Recurse,
   [switch]$FailOnWarnings,
   [switch]$StopOnError,
-  [switch]$MoveToArchiveOnPass
+  [switch]$MoveToArchiveOnPass,
+  [Alias('h','?')][switch]$Help
 )
 
 Set-StrictMode -Version Latest
@@ -17,6 +18,62 @@ $ErrorActionPreference = "Stop"
 function Write-Step {
   param([string]$Message)
   Write-Host "[batch] $Message"
+}
+
+function Get-WarnCountFromCliOutput {
+  param([string[]]$Lines)
+  $joined = $Lines -join "`n"
+  $match = [regex]::Match($joined, 'Warnings:\s*(\d+)')
+  if ($match.Success) {
+    return [int]$match.Groups[1].Value
+  }
+  return -1
+}
+
+function Show-UsageAndExamples {
+  Write-Host "Usage: .\scripts\run_batch.ps1 [-InputDir <path>] [-OutputDir <path>] [-ReportDir <path>] [-LogDir <path>] [-ArchiveDir <path>] [-SummaryCsv <path>] [-Recurse] [-FailOnWarnings] [-StopOnError] [-MoveToArchiveOnPass]"
+  Write-Host ""
+  Write-Host "Examples:"
+  Write-Host "  .\scripts\run_batch.ps1"
+  Write-Host "  .\scripts\run_batch.ps1 -InputDir .\runs\input -Recurse -FailOnWarnings -MoveToArchiveOnPass"
+}
+
+function Show-Help {
+  Write-Host "Usage:"
+  Write-Host "  .\scripts\run_batch.ps1 [-InputDir <path>] [-OutputDir <path>] [-ReportDir <path>] [-LogDir <path>] [-ArchiveDir <path>] [-SummaryCsv <path>] [-Recurse] [-FailOnWarnings] [-StopOnError] [-MoveToArchiveOnPass] [-Help]"
+  Write-Host ""
+  Write-Host "Arguments:"
+  Write-Host "  -InputDir             Folder containing PDFs to process (default: .\runs\input)."
+  Write-Host "  -OutputDir            Folder for sanitized outputs (default: .\runs\output)."
+  Write-Host "  -ReportDir            Kept for compatibility; no redaction report JSON is written."
+  Write-Host "  -LogDir               Folder for anonymization logs (default: .\runs\logs)."
+  Write-Host "  -ArchiveDir           Folder for successful source PDFs when -MoveToArchiveOnPass is used."
+  Write-Host "  -SummaryCsv           Summary CSV path (default: .\runs\batch_summary.csv)."
+  Write-Host "  -Recurse              Recursively find PDFs in subfolders."
+  Write-Host "  -FailOnWarnings       Fail with code 2 when any file has warnings."
+  Write-Host "  -StopOnError          Stop immediately on first CLI error."
+  Write-Host "  -MoveToArchiveOnPass   Move successfully processed source PDFs into ArchiveDir."
+  Write-Host "  -Help, -h, -?         Show this help text and exit."
+  Write-Host ""
+  Write-Host "Outputs:"
+  Write-Host "  - Sanitized PDFs/TXT in OutputDir"
+  Write-Host "  - Redaction logs in LogDir"
+  Write-Host "  - batch_summary.csv at SummaryCsv"
+  Write-Host ""
+  Write-Host "Examples:"
+  Write-Host "  .\scripts\run_batch.ps1"
+  Write-Host "  .\scripts\run_batch.ps1 -InputDir .\runs\input -Recurse -FailOnWarnings"
+  Write-Host "  .\scripts\run_batch.ps1 -InputDir .\runs\input -MoveToArchiveOnPass -StopOnError"
+}
+
+if ($PSBoundParameters.Count -eq 0) {
+  Show-UsageAndExamples
+  exit 0
+}
+
+if ($Help) {
+  Show-Help
+  exit 0
 }
 
 if (-not (Test-Path -LiteralPath ".\src\anon_tool\cli.py")) {
@@ -31,7 +88,7 @@ if (-not (Test-Path -LiteralPath $InputDir)) {
   throw "InputDir does not exist: $InputDir"
 }
 
-New-Item -ItemType Directory -Force -Path $OutputDir,$ReportDir,$LogDir,$ArchiveDir | Out-Null
+New-Item -ItemType Directory -Force -Path $OutputDir, $LogDir, $ArchiveDir | Out-Null
 
 $searchArgs = @{
   LiteralPath = $InputDir
@@ -58,28 +115,26 @@ foreach ($pdf in $pdfs) {
   $safeStem = ($stem -replace '[\\/:*?"<>|]', "_")
   $outPdf = Join-Path $OutputDir ($safeStem + ".sanitized.pdf")
   $outTxt = Join-Path $OutputDir ($safeStem + ".sanitized.txt")
-  $outReport = Join-Path $ReportDir ($safeStem + ".report.json")
+  $outReport = New-TemporaryFile
   $outLog = Join-Path $LogDir ($safeStem + ".redaction.log")
 
   Write-Step ("Processing: {0}" -f $pdf.FullName)
-  python -m anon_tool.cli redact `
+  $cliOutput = & python -m anon_tool.cli redact `
     --input $pdf.FullName `
     --output $outPdf `
     --report $outReport `
     --also-write-txt $outTxt `
     --log-file $outLog `
-    --warn-threshold $warnThreshold
-
+    --warn-threshold $warnThreshold 2>&1
   $exitCode = $LASTEXITCODE
-  $warningCount = -1
-  $status = "error"
-  $errorMessage = ""
-
-  if (Test-Path -LiteralPath $outReport) {
-    $report = Get-Content -LiteralPath $outReport -Raw -Encoding UTF8 | ConvertFrom-Json
-    $warningCount = @($report.warnings).Count
-    $status = [string]$report.status
+  $warnCount = Get-WarnCountFromCliOutput $cliOutput
+  if ($warnCount -ge 0) {
+    $status = if ($warnCount -eq 0) { "success" } else { "success_with_warnings" }
   }
+  else {
+    $status = "unknown"
+  }
+  $errorMessage = ""
 
   if ($exitCode -ne 0) {
     $errorMessage = "CLI exit code $exitCode"
@@ -102,13 +157,17 @@ foreach ($pdf in $pdfs) {
     input_file = $pdf.FullName
     output_pdf = (Resolve-Path -LiteralPath $outPdf -ErrorAction SilentlyContinue).Path
     output_txt = (Resolve-Path -LiteralPath $outTxt -ErrorAction SilentlyContinue).Path
-    report_file = (Resolve-Path -LiteralPath $outReport -ErrorAction SilentlyContinue).Path
+    report_file = ""
     log_file = (Resolve-Path -LiteralPath $outLog -ErrorAction SilentlyContinue).Path
     cli_exit_code = $exitCode
-    warning_count = $warningCount
+    warning_count = $warnCount
     status = $status
     error = $errorMessage
   }) | Out-Null
+
+  if ($outReport -and (Test-Path -LiteralPath $outReport)) {
+    Remove-Item -LiteralPath $outReport -Force -ErrorAction SilentlyContinue
+  }
 }
 
 $summaryDir = Split-Path -Parent $SummaryCsv

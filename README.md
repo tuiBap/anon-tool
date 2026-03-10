@@ -7,7 +7,7 @@
 - Deterministic redaction rules (no model dependency)
 - Typed placeholders such as `[REDACTED_EMAIL]`
 - Sanitized PDF output for downstream summarization
-- JSON redaction report
+- JSON redaction report (CLI mode; script runners keep report output temporary)
 - Detailed audit logging
 
 ## Install
@@ -43,7 +43,7 @@ With a real file:
 ```
 
 Default output location for `validate_case.ps1`:
-- Sanitized PDF/TXT, report JSON, and log are written to the same directory as the input file.
+- Sanitized PDF/TXT and log are written to the same directory as the input file.
 - Optional override: `-WorkDir "C:\some\other\folder"`
 
 ## Standard Run Folder
@@ -52,7 +52,7 @@ Use this structure for repeatable runs:
 runs/
   input/      # place raw PDF files here
   output/     # sanitized pdf/txt
-  reports/    # json reports
+  reports/    # retained for CLI/manual use
   logs/       # redaction logs
   archive/    # optional post-run archive
 ```
@@ -75,7 +75,7 @@ Archive successfully processed source PDFs into `runs/archive`:
 
 Outputs:
 - Sanitized files: `runs/output`
-- Reports: `runs/reports`
+- Reports: CLI mode only (`--report`), scripts use temporary reports internally
 - Logs: `runs/logs`
 - Batch summary CSV: `runs/batch_summary.csv`
 

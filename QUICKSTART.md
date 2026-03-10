@@ -30,7 +30,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 Use these repo folders:
 - `runs/input` -> put raw PDFs here
 - `runs/output` -> sanitized PDF/TXT output
-- `runs/reports` -> JSON redaction reports
+- `runs/reports` -> retained for CLI/manual report output
 - `runs/logs` -> detailed logs
 - `runs/archive` -> optional source archive
 
@@ -46,7 +46,7 @@ Important:
 Expected result:
 - `PASS`
 - `Warnings: 0` (because `-FailOnWarnings`)
-- Output files (sanitized PDF/TXT, report JSON, log) are written to the same folder as the input file by default.
+- Output files (sanitized PDF/TXT, log) are written to the same folder as the input file by default.
 - Optional override: add `-WorkDir "C:\some\other\folder"`
 
 ## 6) Batch run for multiple PDFs
@@ -57,7 +57,7 @@ Put PDFs in `runs/input`, then:
 
 What this does:
 - Processes all PDFs in `runs/input`
-- Writes outputs/reports/logs
+- Writes outputs/logs (reports are generated internally and removed)
 - Moves successfully processed source PDFs to `runs/archive`
 - Writes summary CSV: `runs/batch_summary.csv`
 
@@ -121,8 +121,12 @@ anon-validate -InputPath "C:\path\case.pdf" -FailOnWarnings
   - Re-run with single-dash PowerShell parameters
 - `CLI exited with code 2`:
   - Warning threshold exceeded (usually due to `-FailOnWarnings`)
-  - Check `runs/reports/*.report.json` for warning details
+  - For CLI runs, check the command output or `--report` file for warning details
 
 ## 10) Security note
 Logs may contain sensitive source values by design for debugging.
 Treat files under `runs/logs` as sensitive.
+
+## 11) Script behavior note
+`validate_case.ps1` and `run_batch.ps1` do not keep `*.report.json` files as artifacts.
+If you need persisted redaction reports, use direct CLI commands and provide an explicit `--report` path.
