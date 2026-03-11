@@ -61,6 +61,23 @@ What this does:
 - Moves successfully processed source PDFs to `runs/archive`
 - Writes summary CSV: `runs/batch_summary.csv`
 
+Supported batch flags:
+- `-InputDir` (default `.\\runs\\input`)
+- `-OutputDir` (default: same as `-InputDir`)
+- `-ReportDir` (kept for compatibility; no `.report.json` retention)
+- `-LogDir` (default: same as `-InputDir`)
+- `-ArchiveDir` (default `.\\runs\\archive`)
+- `-SummaryCsv` (default `.\\runs\\batch_summary.csv`)
+- `-ChatGPTExportDir` (optional folder for `.chatgpt.txt`)
+- `-Recurse` (recursive PDF discovery)
+- `-FailOnWarnings` (treat warning count > 0 as failure)
+- `-StopOnError` (exit on first CLI error)
+- `-MoveToArchiveOnPass` (archive source PDFs on successful CLI run)
+
+Batch exit behavior:
+- Exit code `1` if any input file fails in CLI execution.
+- Exit code `2` if `-FailOnWarnings` is enabled and any file has warnings.
+
 ## 7) Direct CLI (optional, advanced)
 ```powershell
 $env:PYTHONPATH="src"
