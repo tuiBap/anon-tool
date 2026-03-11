@@ -1,0 +1,5 @@
+=== Source Page 1 ===
+﻿Created By [REDACTED_PERSON] [REDACTED_EMAIL]
+Phone: [REDACTED_PHONE]
+[REDACTED_SENSITIVE_CONTEXT]
+Symptoms: ArcSight Console freezes under heavy usage

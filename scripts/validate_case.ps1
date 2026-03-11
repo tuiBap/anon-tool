@@ -3,6 +3,7 @@ param(
   [string]$WorkDir = "",
   [switch]$FailOnWarnings,
   [switch]$KeepGeneratedSample,
+  [string]$ChatGPTExport = "",
   [Alias('h','?')][switch]$Help
 )
 
@@ -55,7 +56,7 @@ function Get-WarnCountFromCliOutput {
 }
 
 function Show-UsageAndExamples {
-  Write-Host "Usage: .\scripts\validate_case.ps1 -InputPath <path-to-file> [-WorkDir <path>] [-FailOnWarnings] [-KeepGeneratedSample]"
+  Write-Host "Usage: .\scripts\validate_case.ps1 -InputPath <path-to-file> [-WorkDir <path>] [-ChatGPTExport <path>] [-FailOnWarnings] [-KeepGeneratedSample]"
   Write-Host ""
   Write-Host "Examples:"
   Write-Host "  .\scripts\validate_case.ps1 -InputPath C:\cases\Case_12345678.pdf"
@@ -69,6 +70,7 @@ function Show-Help {
   Write-Host "Arguments:"
   Write-Host "  -InputPath            Path to a PDF or TXT file to validate/sanitize."
   Write-Host "  -WorkDir              Optional folder for outputs. Defaults to directory of InputPath."
+  Write-Host "  -ChatGPTExport        Optional path for ChatGPT-optimized export."
   Write-Host "  -FailOnWarnings       Fail with non-zero exit when any warnings are emitted."
   Write-Host "  -KeepGeneratedSample  Keep the temporary sample input if no InputPath is provided."
   Write-Host "  -Help, -h, -?         Show this help text and exit."
@@ -132,6 +134,28 @@ $outPdf = Join-Path $WorkDir "$stem.sanitized.pdf"
 $outTxt = Join-Path $WorkDir "$stem.sanitized.txt"
 $outLog = Join-Path $WorkDir "$stem.redaction.log"
 $warnThreshold = if ($FailOnWarnings) { 0 } else { 99999 }
+$chatgptArgs = @()
+if ($ChatGPTExport) {
+  $isChatGPTExportDirectory = $ChatGPTExport.EndsWith([IO.Path]::DirectorySeparatorChar) -or $ChatGPTExport.EndsWith([IO.Path]::AltDirectorySeparatorChar)
+  if (-not $isChatGPTExportDirectory) {
+    try {
+      $isChatGPTExportDirectory = (Test-Path -LiteralPath $ChatGPTExport -PathType Container)
+    }
+    catch {
+      $isChatGPTExportDirectory = $false
+    }
+  }
+
+  if ($isChatGPTExportDirectory) {
+    $resolvedStem = [IO.Path]::GetFileNameWithoutExtension((Resolve-Path -LiteralPath $InputPath).Path)
+    $chatgptExportPath = Join-Path $ChatGPTExport "$resolvedStem.chatgpt.txt"
+  }
+  else {
+    $chatgptExportPath = $ChatGPTExport
+  }
+
+  $chatgptArgs += @("--chatgpt-export", $chatgptExportPath)
+}
 $tempReport = New-TemporaryFile
 
 foreach ($path in @($outPdf, $outTxt, $outLog)) {
@@ -148,7 +172,8 @@ $cliOutput = & python -m anon_tool.cli redact `
   --report $tempReport `
   --also-write-txt $outTxt `
   --log-file $outLog `
-  --warn-threshold $warnThreshold 2>&1
+  --warn-threshold $warnThreshold `
+  @chatgptArgs 2>&1
 $warnCount = Get-WarnCountFromCliOutput $cliOutput
 
 if ($LASTEXITCODE -ne 0) {

@@ -1,10 +1,11 @@
 param(
   [string]$InputDir = ".\runs\input",
-  [string]$OutputDir = ".\runs\output",
+  [string]$OutputDir = "",
   [string]$ReportDir = ".\runs\reports",
-  [string]$LogDir = ".\runs\logs",
+  [string]$LogDir = "",
   [string]$ArchiveDir = ".\runs\archive",
   [string]$SummaryCsv = ".\runs\batch_summary.csv",
+  [string]$ChatGPTExportDir = "",
   [switch]$Recurse,
   [switch]$FailOnWarnings,
   [switch]$StopOnError,
@@ -31,7 +32,7 @@ function Get-WarnCountFromCliOutput {
 }
 
 function Show-UsageAndExamples {
-  Write-Host "Usage: .\scripts\run_batch.ps1 [-InputDir <path>] [-OutputDir <path>] [-ReportDir <path>] [-LogDir <path>] [-ArchiveDir <path>] [-SummaryCsv <path>] [-Recurse] [-FailOnWarnings] [-StopOnError] [-MoveToArchiveOnPass]"
+  Write-Host "Usage: .\scripts\run_batch.ps1 [-InputDir <path>] [-OutputDir <path>] [-ReportDir <path>] [-LogDir <path>] [-ChatGPTExportDir <path>] [-ArchiveDir <path>] [-SummaryCsv <path>] [-Recurse] [-FailOnWarnings] [-StopOnError] [-MoveToArchiveOnPass]"
   Write-Host ""
   Write-Host "Examples:"
   Write-Host "  .\scripts\run_batch.ps1"
@@ -40,13 +41,14 @@ function Show-UsageAndExamples {
 
 function Show-Help {
   Write-Host "Usage:"
-  Write-Host "  .\scripts\run_batch.ps1 [-InputDir <path>] [-OutputDir <path>] [-ReportDir <path>] [-LogDir <path>] [-ArchiveDir <path>] [-SummaryCsv <path>] [-Recurse] [-FailOnWarnings] [-StopOnError] [-MoveToArchiveOnPass] [-Help]"
+  Write-Host "  .\scripts\run_batch.ps1 [-InputDir <path>] [-OutputDir <path>] [-ReportDir <path>] [-LogDir <path>] [-ChatGPTExportDir <path>] [-ArchiveDir <path>] [-SummaryCsv <path>] [-Recurse] [-FailOnWarnings] [-StopOnError] [-MoveToArchiveOnPass] [-Help]"
   Write-Host ""
   Write-Host "Arguments:"
   Write-Host "  -InputDir             Folder containing PDFs to process (default: .\runs\input)."
-  Write-Host "  -OutputDir            Folder for sanitized outputs (default: .\runs\output)."
+  Write-Host "  -OutputDir            Folder for sanitized outputs (default: same as InputDir)."
   Write-Host "  -ReportDir            Kept for compatibility; no redaction report JSON is written."
-  Write-Host "  -LogDir               Folder for anonymization logs (default: .\runs\logs)."
+  Write-Host "  -LogDir               Folder for anonymization logs (default: same as InputDir)."
+  Write-Host "  -ChatGPTExportDir     Optional folder for ChatGPT export files (off unless specified)."
   Write-Host "  -ArchiveDir           Folder for successful source PDFs when -MoveToArchiveOnPass is used."
   Write-Host "  -SummaryCsv           Summary CSV path (default: .\runs\batch_summary.csv)."
   Write-Host "  -Recurse              Recursively find PDFs in subfolders."
@@ -84,6 +86,16 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
   throw "Python is not available on PATH."
 }
 
+$outputDirWasSpecified = $PSBoundParameters.ContainsKey("OutputDir")
+$logDirWasSpecified = $PSBoundParameters.ContainsKey("LogDir")
+if (-not $outputDirWasSpecified) { $OutputDir = $InputDir }
+if (-not $logDirWasSpecified) { $LogDir = $InputDir }
+
+$chatgptExportEnabled = -not [string]::IsNullOrWhiteSpace($ChatGPTExportDir)
+if ($chatgptExportEnabled) {
+  New-Item -ItemType Directory -Path $ChatGPTExportDir -Force | Out-Null
+}
+
 if (-not (Test-Path -LiteralPath $InputDir)) {
   throw "InputDir does not exist: $InputDir"
 }
@@ -117,6 +129,12 @@ foreach ($pdf in $pdfs) {
   $outTxt = Join-Path $OutputDir ($safeStem + ".sanitized.txt")
   $outReport = New-TemporaryFile
   $outLog = Join-Path $LogDir ($safeStem + ".redaction.log")
+  $chatgptExportPath = ""
+  $chatgptArgs = @()
+  if ($chatgptExportEnabled) {
+    $chatgptExportPath = Join-Path $ChatGPTExportDir ($safeStem + ".chatgpt.txt")
+    $chatgptArgs = @("--chatgpt-export", $chatgptExportPath)
+  }
 
   Write-Step ("Processing: {0}" -f $pdf.FullName)
   $cliOutput = & python -m anon_tool.cli redact `
@@ -125,7 +143,8 @@ foreach ($pdf in $pdfs) {
     --report $outReport `
     --also-write-txt $outTxt `
     --log-file $outLog `
-    --warn-threshold $warnThreshold 2>&1
+    --warn-threshold $warnThreshold `
+    @chatgptArgs 2>&1
   $exitCode = $LASTEXITCODE
   $warnCount = Get-WarnCountFromCliOutput $cliOutput
   if ($warnCount -ge 0) {

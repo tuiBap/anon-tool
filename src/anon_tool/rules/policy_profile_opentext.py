@@ -38,7 +38,12 @@ def _compile(rule_id: str, category: str, placeholder: str, pattern: str, confid
 
 def default_profile() -> ProfileConfig:
     pattern_rules = [
-        _compile("email.basic", "email", "[REDACTED_EMAIL]", r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b"),
+        _compile(
+            "email.basic",
+            "email",
+            "[REDACTED_EMAIL]",
+            r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}",
+        ),
         _compile(
             "phone.us_intl",
             "phone",
@@ -130,12 +135,14 @@ def default_profile() -> ProfileConfig:
     ]
 
     name_context_patterns = [
-        re.compile(r"\bCreated By\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"),
-        re.compile(r"\bLast Modified By\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"),
-        re.compile(r"\bCase Owner\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"),
-        re.compile(r"\bUser\s+(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"),
-        re.compile(r"\bNSE for [^,]+,\s*(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"),
-        re.compile(r"\bThanks,\s*(?P<name>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"),
+        re.compile(r"\bCreated By\s+(?P<name>[A-Z][a-z]+(?:\s*[A-Z][a-z]+){1,2})\b"),
+        re.compile(r"\bLast Modified By\s+(?P<name>[A-Z][a-z]+(?:\s*[A-Z][a-z]+){1,2})\b"),
+        re.compile(r"\bCase Owner\s+(?P<name>[A-Z][a-z]+(?:\s*[A-Z][a-z]+){1,2})\b"),
+        re.compile(r"\bUser\s+(?P<name>[A-Z][a-z]+(?:\s*[A-Z][a-z]+){1,2})\b"),
+        re.compile(r"\bNSE for [^,]+,\s*(?P<name>[A-Z][a-z]+(?:\s*[A-Z][a-z]+){1,2})\b"),
+        re.compile(r"\bThanks,?\s*(?P<name>[A-Z][a-z]+(?:\s*[A-Z][a-z]+){1,2})\b"),
+        re.compile(r"\b(?:To|From|Cc|Bcc)\s*:\s*(?P<name>[A-Z][a-z]+(?:\s*[A-Z][a-z]+){1,2})\s*<"),
+        re.compile(r"\b(?P<name>[A-Z][a-z]+(?:\s*[A-Z][a-z]+){1,2})(?:[A-Z]{2,})\s*[–—-]\s*[A-Z]"),
     ]
 
     return ProfileConfig(

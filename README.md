@@ -20,7 +20,8 @@ pip install -e .
 anon-tool redact \
   --input "C:\path\case.pdf" \
   --output "C:\path\case.sanitized.pdf" \
-  --report "C:\path\case.report.json"
+  --report "C:\path\case.report.json" \
+  --chatgpt-export "C:\path\case.chatgpt.txt"
 ```
 
 ### Options
@@ -29,6 +30,7 @@ anon-tool redact \
 - `--warn-threshold <int>` (default `99999`)
 - `--input-type auto|pdf|txt` (default `auto`)
 - `--also-write-txt <path>`
+- `--chatgpt-export <path>`
 - `--config <policy_rules.yaml>`
 
 ## One-Command Validation

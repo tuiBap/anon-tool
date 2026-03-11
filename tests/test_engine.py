@@ -17,6 +17,19 @@ def test_redacts_email_phone_and_name_context() -> None:
     assert result.counts_by_category["email"] >= 1
 
 
+def test_redacts_email_when_stuck_to_label_text() -> None:
+    lines = [
+        InputLine(
+            page=1,
+            line_no=1,
+            text="Email Addresssteven.long@whitlockis.comStatusSent",
+        )
+    ]
+    result = redact_lines(lines, default_profile())
+    assert "[REDACTED_EMAIL]" in result.redacted_lines[0].text
+    assert "steven.long@whitlockis.com" not in result.redacted_lines[0].text
+
+
 def test_preserves_technical_context() -> None:
     lines = [
         InputLine(
@@ -142,6 +155,44 @@ def test_preserves_technical_phrase_that_looks_like_title_case_name() -> None:
     result = redact_lines(lines, default_profile())
     assert result.redacted_lines[0].text == lines[0].text
     assert result.redacted_lines[1].text == "Created By [REDACTED_PERSON]"
+
+
+def test_redacts_concatenated_salutation_name() -> None:
+    lines = [
+        InputLine(
+            page=1,
+            line_no=1,
+            text="Thanks,Steven LongSenior ConsultantWhitlockIS",
+        )
+    ]
+    result = redact_lines(lines, default_profile())
+    assert "[REDACTED_PERSON]" in result.redacted_lines[0].text
+
+
+def test_redacts_name_in_email_headers() -> None:
+    lines = [
+        InputLine(
+            page=1,
+            line_no=1,
+            text="From: Steven Long <steven.long@whitlockis.com>",
+        )
+    ]
+    result = redact_lines(lines, default_profile())
+    out = result.redacted_lines[0].text
+    assert "[REDACTED_PERSON]" in out
+    assert "[REDACTED_EMAIL]" in out
+
+
+def test_redacts_signature_style_name_with_suffix_token() -> None:
+    lines = [
+        InputLine(
+            page=1,
+            line_no=1,
+            text="David BushNSE – OpenText, ArcSight Product Premium Support",
+        )
+    ]
+    result = redact_lines(lines, default_profile())
+    assert "[REDACTED_PERSON]" in result.redacted_lines[0].text
 
 
 def test_does_not_redact_ui_labels_as_person_names() -> None:

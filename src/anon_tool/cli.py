@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+import re
 
 from anon_tool.ingest.pdf_reader import read_pdf_lines
 from anon_tool.ingest.txt_reader import read_txt_lines
@@ -35,11 +36,20 @@ def main() -> int:
     lines = _read_input(input_path, input_type)
     result = redact_lines(lines, profile)
 
+    sanitized_text = _to_plain_text(result.redacted_lines)
     write_sanitized_pdf(output_path, result.redacted_lines)
     if args.also_write_txt:
         txt_path = Path(args.also_write_txt)
         txt_path.parent.mkdir(parents=True, exist_ok=True)
-        txt_path.write_text(_to_plain_text(result.redacted_lines), encoding="utf-8")
+        txt_path.write_text(sanitized_text, encoding="utf-8")
+    if args.chatgpt_export:
+        chatgpt_export_path = Path(args.chatgpt_export)
+        chatgpt_export_path.parent.mkdir(parents=True, exist_ok=True)
+        chatgpt_export_path.write_text(
+            build_chatgpt_export_text(sanitized_text),
+            encoding="utf-8",
+        )
+        print(f"ChatGPT export written: {chatgpt_export_path}")
 
     write_report(
         path=report_path,
@@ -52,6 +62,8 @@ def main() -> int:
 
     print(f"Sanitized PDF written: {output_path}")
     print(f"Report written: {report_path}")
+    if args.chatgpt_export:
+        print(f"ChatGPT export created: {args.chatgpt_export}")
     print(f"Audit log written: {log_path}")
     print(f"Warnings: {len(result.warnings)}")
 
@@ -77,6 +89,7 @@ def _build_parser() -> argparse.ArgumentParser:
     redact.add_argument("--warn-threshold", type=int, default=99999, help="Non-zero exit if warnings exceed value.")
     redact.add_argument("--input-type", choices=["auto", "pdf", "txt"], default="auto")
     redact.add_argument("--also-write-txt", default=None, help="Optional sanitized text output path.")
+    redact.add_argument("--chatgpt-export", default=None, help="Optional ChatGPT-optimized text export path.")
     redact.add_argument("--config", default=None, help="Optional YAML policy override file.")
     return parser
 
@@ -120,6 +133,83 @@ def _to_plain_text(lines: list[InputLine]) -> str:
     return "\n".join(out) + "\n"
 
 
+def build_chatgpt_export_text(sanitized_text: str) -> str:
+    page_header = re.compile(r"^\s*=== Source Page \d+ ===\s*$")
+    page_counter = re.compile(r"^\s*\d+\s*/\s*\d+\s*$")
+    marketing_section_start = re.compile(
+        r"(?i)^\s*(?:email preference|marketing metadata|marketing preferences?|preference center|privacy preferences?)\s*:?.*$"
+    )
+    marketing_line_hint = re.compile(
+        r"(?i)\b(?:unsubscribe|opt[- ]?out|marketing|preference|preferences?|metadata|consent|privacy)\b|https?://|mailto:"
+    )
+    noise_header = re.compile(r"(?i)^\W*(?:pardot|6sense|dnb|zoominfo)\W*$")
+    noise_keyword = ("pardot", "6sense", "dnb", "zoominfo")
+    navigation_phrases = (
+        "close window",
+        "print this page",
+        "expand all",
+        "collapse all",
+    )
+
+    normalized: list[str] = []
+    skipping_marketing_block = False
+
+    def line_should_skip_marketing(line: str) -> bool:
+        lower = line.lower()
+        if re.search(r"(?i)^.*\\b(case|subject|status|message date|text body|from:|to:|cc:|bcc:|attachments?)\\b.*$", line):
+            return False
+        if len(line) > 220:
+            return False
+        if marketing_line_hint.search(line):
+            return True
+        if len(line.split()) <= 10 and re.search(r"[a-z0-9]", lower):
+            return True
+        return False
+
+    for raw_line in sanitized_text.splitlines():
+        compact = raw_line.rstrip("\r\n").strip()
+        lower = compact.lower()
+        if not compact:
+            skipping_marketing_block = False
+            normalized.append("")
+            continue
+
+        if page_header.match(compact):
+            continue
+        if page_counter.match(compact):
+            continue
+        if any(phrase in lower for phrase in navigation_phrases):
+            continue
+
+        if noise_header.match(compact):
+            continue
+        if any(section in lower for section in noise_keyword):
+            continue
+
+        if skipping_marketing_block:
+            if line_should_skip_marketing(compact):
+                continue
+            skipping_marketing_block = False
+
+        if marketing_section_start.match(compact):
+            skipping_marketing_block = True
+            continue
+
+        normalized.append(compact)
+
+    collapsed: list[str] = []
+    blank_streak = 0
+    for line in normalized:
+        if line == "":
+            blank_streak += 1
+            if blank_streak <= 1:
+                collapsed.append("")
+            continue
+        blank_streak = 0
+        collapsed.append(line)
+
+    return "\n".join(collapsed).strip() + "\n"
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
-

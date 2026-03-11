@@ -133,29 +133,81 @@ def _detect_context_names(line: InputLine, profile: ProfileConfig) -> list[Detec
         "console",
         "manager",
         "system",
+        "support",
     }
     for pattern in profile.name_context_patterns:
         for match in pattern.finditer(line.text):
             value = match.group("name")
-            if value.lower() in {"task manager", "operating system"}:
-                continue
-            if any(part.lower() in blocked_name_terms for part in value.split()):
-                continue
-            start = match.start("name")
-            end = match.end("name")
-            spans.append(
-                DetectedSpan(
-                    page=line.page,
-                    line=line.line_no,
-                    start=start,
-                    end=end,
-                    category="person_name",
-                    confidence="medium",
-                    rule_id="context.name",
-                    original_text=value,
+            for start_offset, end_offset, normalized in _normalize_context_name(value):
+                if normalized.lower() in {"task manager", "operating system"}:
+                    continue
+                if any(part.lower() in blocked_name_terms for part in normalized.split()):
+                    continue
+                start = match.start("name") + start_offset
+                end = match.start("name") + end_offset
+                spans.append(
+                    DetectedSpan(
+                        page=line.page,
+                        line=line.line_no,
+                        start=start,
+                        end=end,
+                        category="person_name",
+                        confidence="medium",
+                        rule_id="context.name",
+                        original_text=normalized,
+                    )
                 )
-            )
     return spans
+
+
+def _normalize_context_name(value: str) -> list[tuple[int, int, str]]:
+    trimmed = value.strip()
+    if not trimmed:
+        return []
+
+    if " " in trimmed:
+        return [(0, len(trimmed), trimmed)]
+
+    pieces = list(re.finditer(r"[A-Z][a-z]+", trimmed))
+    if len(pieces) < 2:
+        return []
+
+    title_words = {
+        "admin",
+        "administrator",
+        "associate",
+        "consultant",
+        "director",
+        "engineer",
+        "head",
+        "lead",
+        "manager",
+        "officer",
+        "partner",
+        "president",
+        "senior",
+        "specialist",
+        "support",
+        "tech",
+        "technical",
+        "supervisor",
+    }
+
+    selected: list[re.Match[str]] = []
+    for piece in pieces:
+        token = piece.group(0).lower()
+        if token in title_words:
+            break
+        selected.append(piece)
+        if len(selected) >= 3:
+            break
+
+    if len(selected) < 2:
+        return []
+
+    start = selected[0].start()
+    end = selected[-1].end()
+    return [(start, end, trimmed[start:end])]
 
 
 def _detect_keyword_redactions(line: InputLine, profile: ProfileConfig) -> list[DetectedSpan]:
@@ -360,7 +412,7 @@ def _placeholder_for_category(category: str) -> str:
 
 def _residual_scan(lines: list[InputLine]) -> list[str]:
     checks = [
-        ("email_like", re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)),
+        ("email_like", re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.IGNORECASE)),
         (
             "phone_like",
             re.compile(

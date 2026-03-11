@@ -1,0 +1,15 @@
+{
+  "input_file": "sample.validate.txt",
+  "output_file": "C:\\Users\\dbush\\Projects\\anon-tool\\anon-tool\\sample.validate.sanitized.pdf",
+  "timestamp": "2026-03-10T19:13:09.244956+00:00",
+  "policy_profile": "opentext_gisp_ai_v1",
+  "counts_by_category": {
+    "person_name": 1,
+    "email": 1,
+    "phone": 1,
+    "sensitive_context": 1
+  },
+  "warnings": [],
+  "residual_risk_checks": [],
+  "status": "success"
+}
