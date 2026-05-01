@@ -10,6 +10,7 @@ src/anon_tool.egg-info/entry_points.txt
 src/anon_tool.egg-info/requires.txt
 src/anon_tool.egg-info/top_level.txt
 src/anon_tool/ingest/__init__.py
+src/anon_tool/ingest/docx_reader.py
 src/anon_tool/ingest/pdf_reader.py
 src/anon_tool/ingest/txt_reader.py
 src/anon_tool/logging/__init__.py
@@ -22,3 +23,4 @@ src/anon_tool/redaction/engine.py
 src/anon_tool/rules/__init__.py
 src/anon_tool/rules/policy_profile_opentext.py
 tests/test_engine.py
+tests/test_input_readers.py

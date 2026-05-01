@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 from anon_tool.ingest.pdf_reader import read_pdf_lines
+from anon_tool.ingest.docx_reader import read_docx_lines
 from anon_tool.ingest.txt_reader import read_txt_lines
 from anon_tool.logging.audit import default_log_path, write_audit_log
 from anon_tool.output.pdf_writer import write_sanitized_pdf
@@ -77,17 +78,17 @@ def main() -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="anon-tool", description="Policy-compliant PDF/TXT anonymizer.")
+    parser = argparse.ArgumentParser(prog="anon-tool", description="Policy-compliant PDF/TXT/DOCX anonymizer.")
     sub = parser.add_subparsers(dest="command")
 
     redact = sub.add_parser("redact", help="Anonymize input and produce sanitized PDF/report output.")
-    redact.add_argument("--input", required=True, help="Input file path (.pdf or .txt).")
+    redact.add_argument("--input", required=True, help="Input file path (.pdf, .txt, or .docx).")
     redact.add_argument("--output", required=True, help="Output sanitized PDF path.")
     redact.add_argument("--report", required=True, help="Output JSON report path.")
     redact.add_argument("--log-file", default=None, help="Detailed audit log path.")
     redact.add_argument("--log-raw-values", default="true", help="true|false, default true.")
     redact.add_argument("--warn-threshold", type=int, default=99999, help="Non-zero exit if warnings exceed value.")
-    redact.add_argument("--input-type", choices=["auto", "pdf", "txt"], default="auto")
+    redact.add_argument("--input-type", choices=["auto", "pdf", "txt", "docx"], default="auto")
     redact.add_argument("--also-write-txt", default=None, help="Optional sanitized text output path.")
     redact.add_argument("--chatgpt-export", default=None, help="Optional ChatGPT-optimized text export path.")
     redact.add_argument("--config", default=None, help="Optional YAML policy override file.")
@@ -102,6 +103,8 @@ def _resolve_input_type(path: Path, requested: str) -> str:
         return "pdf"
     if suffix == ".txt":
         return "txt"
+    if suffix == ".docx":
+        return "docx"
     raise ValueError(f"Unable to infer input type from extension: {path.suffix}")
 
 
@@ -110,6 +113,8 @@ def _read_input(path: Path, input_type: str) -> list[InputLine]:
         return read_pdf_lines(path)
     if input_type == "txt":
         return read_txt_lines(path)
+    if input_type == "docx":
+        return read_docx_lines(path)
     raise ValueError(f"Unsupported input type: {input_type}")
 
 

@@ -1,0 +1,200 @@
+﻿Close WindowPrint This PageExpand All | Collapse All
+Case: 02981447
+ 
+Description Information
+Type Technical Issue Status Pending Support (New Activity)
+11 Stopped
+2 - High Priority High
+Case Origin Web Case Visible to Customer
+ArcSight Console freezes - INC-12872-08102024
+Include these emails on allreplies:steven.long@whitlockis.com; support@whitlockis.comContact Phone Number:  888.223.9349 x206 (Email is the bestway to contact me)
+Please include INC-12872-08102024 in the subject line of theemail.
+We are in the SVI Program and this case should be flagged assuch.  Please make sure this case is flagged as SVI andassigned to 2nd Level Support.
+Service: Arcsight ESMVersion: 7.6.4.2772.0
+Operating System: Linux (RedHat)OS Version: 7.x
+NOTE NOTE NOTE NOTE-------------------
+**** THIS IS A U.S. GOVERNMENT/DOD CUSTOMER ****Due to the sensitive nature of the information on thesesystems, please do not request screen sharing, logs,screenshots or access to systems unless the customerexplicitly offers access.
+**** Named Support Engineer Contacts ****NSE for ArcSight, David Bush - dbush@opentext.com
+-------------------NOTE NOTE NOTE NOTE
+Symptoms---------------The ArcSight Console and web ESM are freezing. It fails toload the active channels at times. When it does load, it willeventually freeze and will need the service stopped via theTask Manager. After logging back in, the console (web ESM)works as designed for a few minutes to about an hour at times,then freezes again, preventing one from logging out or clickingon the X to exit the program. This is a major performance issueand prevents the continuous monitoring of the SIEM solutiondue to constant restarts.
+Troubleshooting---------------
+Client confirms that there were no recent configurationchanges, installations or upgradesClient confirms that event traffic has recently increasedsignificantly
+Suggested client delete Cache files and let them beregenerated, no improvementSuggested increasing JVM heap size: Size is set to 1M, noimprovement
+Freezes with the following message:Manager Unresponsive:The manager is slow to respond and may be experiencingheavy usage.
+Client confirms that additional error messages are show up,stating that it is "unable to find the specified service."
+Thanks,Steven Longsteven.long@whitlockis.com
+  
+Comments    
+Calculated Priority
+Severity
+Subject
+ Contact Privacy GDPR Tracking
+Description
+12/11/25, 10:54 AM Case: 02981447 ~ Salesforce - Unlimited Edition
+https://microfocus.my.salesforce.com/500Q400000DCbFjIAL/p 1/106
+Follow The Sun Case
+   
+Customer Information
+Contact Name Alyssa Martinez Account Name Missile Defense Agency
+Reference number  Customer Value Tier 5
+  Contact Region AMS
+Product Details
+Asset OpenText Enterprise Security Manager Standard Edition 1000EPS (ArcSight Enterprise Security Manager) Product Enterprise Security Manager
+Asset Version  Sub Product  
+Linux any~Linux
+US Citizen OnlyArcSight-SAM-ABrindellArcSight ESM-NSE-DBushArcSight Logger-NSE-DBushNetwork Node Manager-NSE-Shawn.Olsen2
+Government Indicator
+Customer Friendly Product ArcSight Enterprise Security Manager (ESM)   
+Entitlement Information
+Entitlement Name Named Support Engineer Lite PubSect - Premium SupportService Contract ServiceContract - FedSecure-ArcSight-MDA C2BMC- IselaMurphy
+00904827   
+Defect Information
+OCTIM77JK4632585 OCTIM77JK4634605R&D Change Requests  
+Non-Octane Defect  SMAX Incident Id  
+  Component  
+  SMAX Transction DateTime  
+  SMAX Rejection Reason  
+  SMAX Status Ready to Send
+FTS Attachments
+FC359922 FP359922
+P2gn$HT6tp.MF7j d^MG2yt{PM5vb*E
+Closure
+It appears that the issues we observed stem from resourceconstraints on your VM. Please consider making therecommended adjustments to optimize performance.
+Date/Time Closed  
+Close Code Not Reproducible  
+Knowledge Base Article  Re-open reason  
+Case Owner David Bush Problem Type  
+System Information
+Created By First Call, 10/9/2024 1:01 PM Last Modified By Case Routing User, 12/9/2025 11:42 AM
+  Contact Information
+ 
+Name Alyssa Martinez
+Account Name Missile Defense Agency
+Company  Support Portal Access
+Title  Email alyssa.a.martinez.ctr@mda.mil
+  
+Mobile  
+Preferred Language English Phone 1 877 632 3637
+  
+   
+  Application Security; Collaboration Solutions; Data Protection;Functional Testing; Process Automation; Mainframe ADLM;MF COBOL; Operations Bridge and Analytics; SecureContent Management; Service Management Automation;Performance Testing
+Partner
+Access Manager User ID    
+Access Manager Username    
+Platform
+ Reported Version
+Special Instruction
+Customer Service Identifier
+R&D Incident
+Account
+ FTS AccountName
+Password
+ FTS Password
+Closure Summary
+Idol Knowledge Link
+Gov LLC
+Partner Contact
+Standardised Title
+ Partner Business Phone
+Inactive
+GDPR Tracking
+Cognism ID
+Portfolio Association
+12/11/25, 10:54 AM Case: 02981447 ~ Salesforce - Unlimited Edition
+https://microfocus.my.salesforce.com/500Q400000DCbFjIAL/p 2/106
+  
+Preferences
+RTBF - GDPR
+  
+Email Opt Out
+ Do Not Call
+Cybersecurity Email Preference Unknown
+Entitlement access notificationsoff?
+  
+Disable Survey Invitation
+ Unknown
+Disable Case Email Notification
+ Time Zone  
+ALT Email Preference Unknown   
+ADM Email Preference Unknown   
+Unknown   
+Portfolio Email Preference Unknown   
+OSM Email Preference Unknown   
+Unknown   
+BN Email Preference    
+CONT Email Preference    
+Address Information
+Mailing Address 720 Irwin AveSchriever Afb, Colorado 80912-7299United States of America
+Region AMS
+Additional Information
+OT   
+Product Groups of Interest
+Analytics and Legal Tech
+ Application Delivery Management
+Analytics and Legal Tech  ADM Portfolio  
+Observability and ServiceManagement
+ Cybersecurity
+OSM Portfolio  Cybersecurity Portfolio  
+Portfolio
+ Application ModernizationConnectivity
+Portfolio   
+Content
+ Business Network
+Content Portfolio  Business Network Portfolio  
+Marketing
+Marketing Comments   
+Historical Marketing Comments   
+Product Interest  Source Campaign ID  
+Product Interest History   
+Marketplace Downloads  Is Quality Suppressed
+  Lead Source  
+  Contact Source Information  
+  Contact Source History  
+  Customer Event  
+Pardot Activity
+Content cannot be displayed: You do not have sufficient privileges to access the page: /apex/pi__ProspectInsightContactActivities
+ZoomInfo
+  
+ZoomInfo Contact ID  ZoomInfo Company ID  
+ZoomInfo First Updated  ZoomInfo Last Updated  
+Partner Opted Out
+Preferred Method of Contact
+Opted-In
+Techbeacon Email Preference
+TTP Email Preference
+AMC Email Preference
+MOC Email Preference
+Corporate Owner
+AMC Portfolio
+Campaign ID
+Campaign ID History
+Source Campaign ID History
+3rd Party Vendor Source
+ Zoominfo Position
+12/11/25, 10:54 AM Case: 02981447 ~ Salesforce - Unlimited Edition
+https://microfocus.my.salesforce.com/500Q400000DCbFjIAL/p 3/106
+DNB
+DNB Parent Duns    
+System Information
+Created By Stacey Moreno, 3/31/2023 4:21 PM   
+Last Modified By Bavajan Dudekula, 8/9/2025 7:06 PM   
+Custom Links Google Maps Google Search  
+Case History12/9/2025 11:42 AM
+UserCase Routing User
+ActionChanged Status from Pending Customer to Pending Support (New Activity).
+12/9/2025 10:31 AM
+UserDavid Bush
+ActionChanged Status from Pending Support (New Activity) to Pending Customer.
+12/8/2025 9:07 AM
+UserCase Routing User
+ActionChanged Status from Pending Customer to Pending Support (New Activity).
+12/1/2025 2:50 PM
+UserDavid Bush
+ActionChanged Status from Pending Support (New Activity) to Pending Customer.
+12/1/2025 2:38 PM
+UserCase Routing User
+ActionChanged Status from Pending Customer to Pending Support (New Activity).
+12/1/2025 12:29 PM
+UserDavid Bush
+ActionChanged Status from Pending Support (New Activity) to Pending Customer.
+12/1/2025 12:17 PM

@@ -3,7 +3,7 @@
 `anon-tool` is a local Python CLI for policy-aligned anonymization of CRM case exports.
 
 ## Features
-- Input support for `.pdf` and `.txt`
+- Input support for `.pdf`, `.txt`, and `.docx`
 - Deterministic redaction rules (no model dependency)
 - Typed placeholders such as `[REDACTED_EMAIL]`
 - Sanitized PDF output for downstream summarization
@@ -28,7 +28,7 @@ anon-tool redact \
 - `--log-file <path>`
 - `--log-raw-values true|false` (default `true`)
 - `--warn-threshold <int>` (default `99999`)
-- `--input-type auto|pdf|txt` (default `auto`)
+- `--input-type auto|pdf|txt|docx` (default `auto`)
 - `--also-write-txt <path>`
 - `--chatgpt-export <path>`
 - `--config <policy_rules.yaml>`
@@ -52,7 +52,7 @@ Default output location for `validate_case.ps1`:
 Use this structure for repeatable runs:
 ```text
 runs/
-  input/      # place raw PDF files here
+  input/      # place raw PDF, TXT, and DOCX files here
   output/     # sanitized pdf/txt
   reports/    # retained for CLI/manual use
   logs/       # redaction logs
@@ -60,7 +60,7 @@ runs/
 ```
 
 ## Batch Runner
-Process all PDFs in `runs/input`:
+Process all supported files in `runs/input`:
 ```powershell
 .\scripts\run_batch.ps1
 ```
@@ -69,24 +69,24 @@ Batch options:
 
 | Option | Description | Default |
 |---|---|---|
-| `-InputDir` | Folder to scan for PDFs | `.\\runs\\input` |
+| `-InputDir` | Folder to scan for PDF, TXT, and DOCX files | `.\\runs\\input` |
 | `-OutputDir` | Folder for sanitized PDF/TXT outputs | same as `-InputDir` |
 | `-ReportDir` | Kept for compatibility; batch runs use temporary reports | `.\\runs\\reports` |
 | `-LogDir` | Folder for redaction logs | same as `-InputDir` |
-| `-ArchiveDir` | Folder for source PDFs when `-MoveToArchiveOnPass` is set | `.\\runs\\archive` |
+| `-ArchiveDir` | Folder for source files when `-MoveToArchiveOnPass` is set | `.\\runs\\archive` |
 | `-SummaryCsv` | Batch summary CSV output path | `.\\runs\\batch_summary.csv` |
 | `-ChatGPTExportDir` | Optional folder for `.chatgpt.txt` outputs | (off) |
-| `-Recurse` | Recursively scan PDF inputs | off |
+| `-Recurse` | Recursively scan supported inputs | off |
 | `-FailOnWarnings` | Exit with code 2 if any file has warnings | off |
 | `-StopOnError` | Stop processing on first CLI error | off |
-| `-MoveToArchiveOnPass` | Move successfully processed source PDFs to archive | off |
+| `-MoveToArchiveOnPass` | Move successfully processed source files to archive | off |
 
 Process recursively and fail on warnings:
 ```powershell
 .\scripts\run_batch.ps1 -Recurse -FailOnWarnings
 ```
 
-Archive successfully processed source PDFs into `runs/archive`:
+Archive successfully processed source files into `runs/archive`:
 ```powershell
 .\scripts\run_batch.ps1 -MoveToArchiveOnPass
 ```

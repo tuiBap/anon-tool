@@ -1,6 +1,6 @@
 # anon-tool Quickstart (Coworkers)
 
-This guide gets you from zero to processing Salesforce case PDFs.
+This guide gets you from zero to processing Salesforce case files.
 
 ## 1) Prerequisites
 - Windows 10/11
@@ -28,7 +28,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 ## 4) Standard folders
 Use these repo folders:
-- `runs/input` -> put raw PDFs here
+- `runs/input` -> put raw PDF, TXT, and DOCX files here
 - `runs/output` -> sanitized PDF/TXT output
 - `runs/reports` -> retained for CLI/manual report output
 - `runs/logs` -> detailed logs
@@ -49,16 +49,16 @@ Expected result:
 - Output files (sanitized PDF/TXT, log) are written to the same folder as the input file by default.
 - Optional override: add `-WorkDir "C:\some\other\folder"`
 
-## 6) Batch run for multiple PDFs
-Put PDFs in `runs/input`, then:
+## 6) Batch run for multiple files
+Put PDF, TXT, or DOCX files in `runs/input`, then:
 ```powershell
 .\scripts\run_batch.ps1 -FailOnWarnings -MoveToArchiveOnPass
 ```
 
 What this does:
-- Processes all PDFs in `runs/input`
+- Processes all supported files in `runs/input`
 - Writes outputs/logs (reports are generated internally and removed)
-- Moves successfully processed source PDFs to `runs/archive`
+- Moves successfully processed source files to `runs/archive`
 - Writes summary CSV: `runs/batch_summary.csv`
 
 Supported batch flags:
@@ -69,10 +69,10 @@ Supported batch flags:
 - `-ArchiveDir` (default `.\\runs\\archive`)
 - `-SummaryCsv` (default `.\\runs\\batch_summary.csv`)
 - `-ChatGPTExportDir` (optional folder for `.chatgpt.txt`)
-- `-Recurse` (recursive PDF discovery)
+- `-Recurse` (recursive supported-file discovery)
 - `-FailOnWarnings` (treat warning count > 0 as failure)
 - `-StopOnError` (exit on first CLI error)
-- `-MoveToArchiveOnPass` (archive source PDFs on successful CLI run)
+- `-MoveToArchiveOnPass` (archive source files on successful CLI run)
 
 Batch exit behavior:
 - Exit code `1` if any input file fails in CLI execution.

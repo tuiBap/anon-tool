@@ -68,7 +68,7 @@ function Show-Help {
   Write-Host "  .\scripts\validate_case.ps1 -InputPath <path-to-file> [-WorkDir <path>] [-FailOnWarnings] [-KeepGeneratedSample] [-Help]"
   Write-Host ""
   Write-Host "Arguments:"
-  Write-Host "  -InputPath            Path to a PDF or TXT file to validate/sanitize."
+  Write-Host "  -InputPath            Path to a PDF, TXT, or DOCX file to validate/sanitize."
   Write-Host "  -WorkDir              Optional folder for outputs. Defaults to directory of InputPath."
   Write-Host "  -ChatGPTExport        Optional path for ChatGPT-optimized export."
   Write-Host "  -FailOnWarnings       Fail with non-zero exit when any warnings are emitted."

@@ -44,17 +44,17 @@ function Show-Help {
   Write-Host "  .\scripts\run_batch.ps1 [-InputDir <path>] [-OutputDir <path>] [-ReportDir <path>] [-LogDir <path>] [-ChatGPTExportDir <path>] [-ArchiveDir <path>] [-SummaryCsv <path>] [-Recurse] [-FailOnWarnings] [-StopOnError] [-MoveToArchiveOnPass] [-Help]"
   Write-Host ""
   Write-Host "Arguments:"
-  Write-Host "  -InputDir             Folder containing PDFs to process (default: .\runs\input)."
+  Write-Host "  -InputDir             Folder containing PDF, TXT, and DOCX files to process (default: .\runs\input)."
   Write-Host "  -OutputDir            Folder for sanitized outputs (default: same as InputDir)."
   Write-Host "  -ReportDir            Kept for compatibility; no redaction report JSON is written."
   Write-Host "  -LogDir               Folder for anonymization logs (default: same as InputDir)."
   Write-Host "  -ChatGPTExportDir     Optional folder for ChatGPT export files (off unless specified)."
-  Write-Host "  -ArchiveDir           Folder for successful source PDFs when -MoveToArchiveOnPass is used."
+  Write-Host "  -ArchiveDir           Folder for successful source files when -MoveToArchiveOnPass is used."
   Write-Host "  -SummaryCsv           Summary CSV path (default: .\runs\batch_summary.csv)."
-  Write-Host "  -Recurse              Recursively find PDFs in subfolders."
+  Write-Host "  -Recurse              Recursively find supported files in subfolders."
   Write-Host "  -FailOnWarnings       Fail with code 2 when any file has warnings."
   Write-Host "  -StopOnError          Stop immediately on first CLI error."
-  Write-Host "  -MoveToArchiveOnPass   Move successfully processed source PDFs into ArchiveDir."
+  Write-Host "  -MoveToArchiveOnPass   Move successfully processed source files into ArchiveDir."
   Write-Host "  -Help, -h, -?         Show this help text and exit."
   Write-Host ""
   Write-Host "Outputs:"
@@ -104,14 +104,14 @@ New-Item -ItemType Directory -Force -Path $OutputDir, $LogDir, $ArchiveDir | Out
 
 $searchArgs = @{
   LiteralPath = $InputDir
-  Filter = "*.pdf"
   File = $true
 }
 if ($Recurse) { $searchArgs["Recurse"] = $true }
 
-$pdfs = @(Get-ChildItem @searchArgs | Sort-Object FullName)
-if ($pdfs.Count -eq 0) {
-  Write-Step "No PDF files found in $InputDir"
+$supportedExtensions = @(".pdf", ".txt", ".docx")
+$inputFiles = @(Get-ChildItem @searchArgs | Where-Object { $supportedExtensions -contains $_.Extension.ToLowerInvariant() } | Sort-Object FullName)
+if ($inputFiles.Count -eq 0) {
+  Write-Step "No supported files found in $InputDir"
   exit 0
 }
 
@@ -120,11 +120,24 @@ $env:PYTHONPATH = "src"
 
 $results = New-Object System.Collections.Generic.List[object]
 
-Write-Step ("Found {0} PDF file(s)" -f $pdfs.Count)
+Write-Step ("Found {0} supported file(s)" -f $inputFiles.Count)
 
-foreach ($pdf in $pdfs) {
-  $stem = [IO.Path]::GetFileNameWithoutExtension($pdf.Name)
-  $safeStem = ($stem -replace '[\\/:*?"<>|]', "_")
+$stemCounts = @{}
+foreach ($inputFile in $inputFiles) {
+  $stemKey = [IO.Path]::GetFileNameWithoutExtension($inputFile.Name).ToLowerInvariant()
+  if ($stemCounts.ContainsKey($stemKey)) {
+    $stemCounts[$stemKey] += 1
+  }
+  else {
+    $stemCounts[$stemKey] = 1
+  }
+}
+
+foreach ($inputFile in $inputFiles) {
+  $stem = [IO.Path]::GetFileNameWithoutExtension($inputFile.Name)
+  $stemKey = $stem.ToLowerInvariant()
+  $outputStem = if ($stemCounts[$stemKey] -gt 1) { $inputFile.Name } else { $stem }
+  $safeStem = ($outputStem -replace '[\\/:*?"<>|]', "_")
   $outPdf = Join-Path $OutputDir ($safeStem + ".sanitized.pdf")
   $outTxt = Join-Path $OutputDir ($safeStem + ".sanitized.txt")
   $outReport = New-TemporaryFile
@@ -136,9 +149,9 @@ foreach ($pdf in $pdfs) {
     $chatgptArgs = @("--chatgpt-export", $chatgptExportPath)
   }
 
-  Write-Step ("Processing: {0}" -f $pdf.FullName)
+  Write-Step ("Processing: {0}" -f $inputFile.FullName)
   $cliOutput = & python -m anon_tool.cli redact `
-    --input $pdf.FullName `
+    --input $inputFile.FullName `
     --output $outPdf `
     --report $outReport `
     --also-write-txt $outTxt `
@@ -158,22 +171,22 @@ foreach ($pdf in $pdfs) {
   if ($exitCode -ne 0) {
     $errorMessage = "CLI exit code $exitCode"
     if ($StopOnError) {
-      throw "Stopping on error for $($pdf.Name): $errorMessage"
+      throw "Stopping on error for $($inputFile.Name): $errorMessage"
     }
   }
   elseif ($MoveToArchiveOnPass) {
-    $archiveTarget = Join-Path $ArchiveDir $pdf.Name
+    $archiveTarget = Join-Path $ArchiveDir $inputFile.Name
     if (Test-Path -LiteralPath $archiveTarget) {
       $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-      $name = [IO.Path]::GetFileNameWithoutExtension($pdf.Name)
-      $ext = [IO.Path]::GetExtension($pdf.Name)
+      $name = [IO.Path]::GetFileNameWithoutExtension($inputFile.Name)
+      $ext = [IO.Path]::GetExtension($inputFile.Name)
       $archiveTarget = Join-Path $ArchiveDir ("{0}_{1}{2}" -f $name, $stamp, $ext)
     }
-    Move-Item -LiteralPath $pdf.FullName -Destination $archiveTarget -Force
+    Move-Item -LiteralPath $inputFile.FullName -Destination $archiveTarget -Force
   }
 
   $results.Add([PSCustomObject]@{
-    input_file = $pdf.FullName
+    input_file = $inputFile.FullName
     output_pdf = (Resolve-Path -LiteralPath $outPdf -ErrorAction SilentlyContinue).Path
     output_txt = (Resolve-Path -LiteralPath $outTxt -ErrorAction SilentlyContinue).Path
     report_file = ""
