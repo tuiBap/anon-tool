@@ -24,6 +24,19 @@ anon-tool redact \
   --chatgpt-export "C:\path\case.chatgpt.txt"
 ```
 
+## Web UI
+Launch the local dashboard interface:
+```bash
+anon-tool-web
+```
+
+Then open:
+```text
+http://127.0.0.1:7860
+```
+
+The web UI runs locally, uses the CPU processing path, and supports PDF, TXT, DOCX, or pasted text input.
+
 ### Options
 - `--log-file <path>`
 - `--log-raw-values true|false` (default `true`)

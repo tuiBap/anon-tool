@@ -4,6 +4,7 @@ Version: 0.1.0
 Summary: Policy-compliant PDF/TXT/DOCX anonymizer for CRM case summaries.
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
+Requires-Dist: gradio>=4.44.0
 Requires-Dist: pypdf>=4.2.0
 Requires-Dist: python-docx>=1.1.2
 Requires-Dist: reportlab>=4.2.0

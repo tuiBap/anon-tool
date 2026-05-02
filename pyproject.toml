@@ -9,6 +9,7 @@ description = "Policy-compliant PDF/TXT/DOCX anonymizer for CRM case summaries."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "gradio>=4.44.0",
   "pypdf>=4.2.0",
   "python-docx>=1.1.2",
   "reportlab>=4.2.0",
@@ -20,6 +21,7 @@ dev = ["pytest>=8.2.0"]
 
 [project.scripts]
 anon-tool = "anon_tool.cli:main"
+anon-tool-web = "anon_tool.web:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
