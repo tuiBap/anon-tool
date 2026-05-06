@@ -420,6 +420,54 @@ def _residual_scan(lines: list[InputLine]) -> list[str]:
             ),
         ),
         ("card_like", re.compile(r"\b(?:\d[ -]*?){13,19}\b")),
+        ("url_like", re.compile(r"\bhttps?://[^\s<>'\")]+", re.IGNORECASE)),
+        (
+            "hostname_like",
+            re.compile(
+                r"\b(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+"
+                r"(?:local|internal|corp|lan|mil|com|net|org|gov|edu)\b",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "internal_path_like",
+            re.compile(
+                r"(?:[A-Z]:\\(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\r\n]+"
+                r"|\\\\[A-Z0-9_.-]+\\[^\s]+"
+                r"|/(?:opt|etc|var|home|users|usr|tmp|srv|mnt|root)(?:/[^\s]+)+)",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "username_like",
+            re.compile(
+                r"\b(?:[A-Z0-9_.-]{2,}\\[A-Z0-9_.-]{2,}"
+                r"|(?:user(?:name)?|login|owner|assigned\s+to)\s*[:=]\s*[A-Z][A-Z0-9._-]{2,})\b",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "jwt_like",
+            re.compile(r"\beyJ[A-Z0-9_-]{10,}\.[A-Z0-9_-]{10,}\.[A-Z0-9_-]{10,}\b", re.IGNORECASE),
+        ),
+        (
+            "ssh_key_like",
+            re.compile(
+                r"-----BEGIN (?:OPENSSH|RSA|DSA|EC) PRIVATE KEY-----"
+                r"|\bssh-(?:rsa|ed25519|ecdsa)\s+[A-Z0-9+/=]{20,}",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "cloud_token_like",
+            re.compile(
+                r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"
+                r"|\bAIza[A-Z0-9_-]{35}\b"
+                r"|\bgh[pousr]_[A-Z0-9_]{20,}\b"
+                r"|\bsv=\d{4}-\d{2}-\d{2}&[^\s]+?\bsig=",
+                re.IGNORECASE,
+            ),
+        ),
     ]
     findings: list[str] = []
     for line in lines:

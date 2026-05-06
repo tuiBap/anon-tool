@@ -29,7 +29,7 @@ def main() -> int:
     report_path = Path(args.report)
     config_path = Path(args.config) if args.config else None
     log_path = Path(args.log_file) if args.log_file else default_log_path()
-    include_raw = _parse_bool(args.log_raw_values, default=True)
+    include_raw = _parse_bool(args.log_raw_values, default=False)
     input_type = _resolve_input_type(input_path, args.input_type)
 
     profile = load_profile(config_path)
@@ -86,7 +86,7 @@ def _build_parser() -> argparse.ArgumentParser:
     redact.add_argument("--output", required=True, help="Output sanitized PDF path.")
     redact.add_argument("--report", required=True, help="Output JSON report path.")
     redact.add_argument("--log-file", default=None, help="Detailed audit log path.")
-    redact.add_argument("--log-raw-values", default="true", help="true|false, default true.")
+    redact.add_argument("--log-raw-values", default="false", help="true|false, default false.")
     redact.add_argument("--warn-threshold", type=int, default=99999, help="Non-zero exit if warnings exceed value.")
     redact.add_argument("--input-type", choices=["auto", "pdf", "txt", "docx"], default="auto")
     redact.add_argument("--also-write-txt", default=None, help="Optional sanitized text output path.")

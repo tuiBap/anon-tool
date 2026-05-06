@@ -183,6 +183,65 @@ def test_redacts_name_in_email_headers() -> None:
     assert "[REDACTED_EMAIL]" in out
 
 
+def test_redacts_uppercase_name_in_email_headers() -> None:
+    lines = [
+        InputLine(
+            page=1,
+            line_no=1,
+            text="From: JOHN SMITH <john.smith@example.com>",
+        )
+    ]
+    result = redact_lines(lines, default_profile())
+    out = result.redacted_lines[0].text
+    assert "[REDACTED_PERSON]" in out
+    assert "JOHN SMITH" not in out
+    assert "[REDACTED_EMAIL]" in out
+
+
+def test_redacts_api_key_with_space_separator() -> None:
+    lines = [InputLine(page=1, line_no=1, text="API key = abc123def456")]
+    result = redact_lines(lines, default_profile())
+    out = result.redacted_lines[0].text
+    assert "[REDACTED_SECRET]" in out
+    assert "abc123def456" not in out
+
+
+def test_residual_scan_flags_urls_hostnames_paths_and_usernames() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="Portal: https://support.example.com/case/123"),
+        InputLine(page=1, line_no=2, text="Manager host esm-prod-01.internal.local is slow"),
+        InputLine(page=1, line_no=3, text=r"Log path C:\ArcSight\current\logs\console.log"),
+        InputLine(page=1, line_no=4, text=r"Login: ACME\jsmith"),
+    ]
+    result = redact_lines(lines, default_profile())
+    checks = "\n".join(result.residual_risk_checks)
+    assert "url_like match remains" in checks
+    assert "hostname_like match remains" in checks
+    assert "internal_path_like match remains" in checks
+    assert "username_like match remains" in checks
+
+
+def test_residual_scan_flags_tokens_and_keys() -> None:
+    lines = [
+        InputLine(
+            page=1,
+            line_no=1,
+            text="JWT eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+        ),
+        InputLine(
+            page=1,
+            line_no=2,
+            text="SSH ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID7t3W2h5s6A2q1J8K9z0lMNpQrStUvWxYz",
+        ),
+        InputLine(page=1, line_no=3, text="AWS key AKIAIOSFODNN7EXAMPLE"),
+    ]
+    result = redact_lines(lines, default_profile())
+    checks = "\n".join(result.residual_risk_checks)
+    assert "jwt_like match remains" in checks
+    assert "ssh_key_like match remains" in checks
+    assert "cloud_token_like match remains" in checks
+
+
 def test_redacts_signature_style_name_with_suffix_token() -> None:
     lines = [
         InputLine(

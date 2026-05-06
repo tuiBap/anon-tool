@@ -2,17 +2,27 @@
 __pycache__/
 *.pyc
 .vscode/
+*.egg-info/
+tmp/
+C/
 
 # Generated tool outputs
 artifacts/
 logs/
+output/
 sample.txt
 sample.sanitized.pdf
 sample.sanitized.txt
 sample.report.json
+sample.validate.*
+case_*.extracted.txt
+case_*.first*.txt
 case_*.sanitized.pdf
 case_*.sanitized.txt
 case_*.report.json
+case_*.chatgpt.txt
+*.redaction.log
+*.validate.redaction.log
 
 # Standard run folders (keep structure only)
 runs/output/*

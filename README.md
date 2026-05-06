@@ -39,7 +39,7 @@ The web UI runs locally, uses the CPU processing path, and supports PDF, TXT, DO
 
 ### Options
 - `--log-file <path>`
-- `--log-raw-values true|false` (default `true`)
+- `--log-raw-values true|false` (default `false`)
 - `--warn-threshold <int>` (default `99999`)
 - `--input-type auto|pdf|txt|docx` (default `auto`)
 - `--also-write-txt <path>`
@@ -116,4 +116,4 @@ Run-level behavior:
 
 ## Notes
 - The output PDF is a normalized text rendering of the sanitized content.
-- If detailed logging is enabled with raw values, logs may contain sensitive source data.
+- Raw values are hidden in audit logs by default. If detailed logging is enabled with raw values, logs may contain sensitive source data.

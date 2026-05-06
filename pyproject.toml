@@ -9,7 +9,7 @@ description = "Policy-compliant PDF/TXT/DOCX anonymizer for CRM case summaries."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "gradio>=4.44.0",
+  "gradio>=6.7.0",
   "pypdf>=4.2.0",
   "python-docx>=1.1.2",
   "reportlab>=4.2.0",

@@ -21,15 +21,41 @@ APP_TITLE = "Anon Tool"
 SAVED_OUTPUT_DIR = Path("runs/output/web-ui")
 
 
-def launch_app(server_name: str = "127.0.0.1", server_port: int = 7860) -> None:
+def launch_app(
+    server_name: str = "127.0.0.1",
+    server_port: int = 7860,
+    auth_user: str | None = None,
+    auth_password: str | None = None,
+) -> None:
+    auth = _resolve_auth(server_name, auth_user, auth_password)
     app = build_app()
     app.launch(
         server_name=server_name,
         server_port=server_port,
+        auth=auth,
         theme=_theme(),
         css=_css(),
         footer_links=[],
     )
+
+
+def _resolve_auth(
+    server_name: str,
+    auth_user: str | None,
+    auth_password: str | None,
+) -> tuple[str, str] | None:
+    if bool(auth_user) != bool(auth_password):
+        raise ValueError("Provide both --auth-user and --auth-password, or neither.")
+    if auth_user and auth_password:
+        return (auth_user, auth_password)
+    if not _is_loopback_bind(server_name):
+        raise ValueError("Refusing to expose the web UI without authentication. Use --auth-user and --auth-password.")
+    return None
+
+
+def _is_loopback_bind(server_name: str) -> bool:
+    normalized = server_name.strip().lower()
+    return normalized in {"127.0.0.1", "localhost", "::1"}
 
 
 def build_app() -> gr.Blocks:
@@ -849,8 +875,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="anon-tool-web", description="Launch the Anon Tool web UI.")
     parser.add_argument("--server-name", default="127.0.0.1")
     parser.add_argument("--server-port", type=int, default=7860)
+    parser.add_argument("--auth-user", default=None, help="Username required when exposing the UI off localhost.")
+    parser.add_argument("--auth-password", default=None, help="Password required when exposing the UI off localhost.")
     args = parser.parse_args()
-    launch_app(server_name=args.server_name, server_port=args.server_port)
+    launch_app(
+        server_name=args.server_name,
+        server_port=args.server_port,
+        auth_user=args.auth_user,
+        auth_password=args.auth_password,
+    )
     return 0
 
 

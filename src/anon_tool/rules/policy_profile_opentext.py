@@ -80,7 +80,7 @@ def default_profile() -> ProfileConfig:
             "secret.token",
             "secret",
             "[REDACTED_SECRET]",
-            r"\b(?:api[_-]?key|token|secret|password)\b\s*[:=]\s*[^\s]{6,}",
+            r"\b(?:api[\s_-]?key|token|secret|password)\b\s*[:=]\s*[^\s]{6,}",
             confidence="high",
         ),
     ]
@@ -142,6 +142,7 @@ def default_profile() -> ProfileConfig:
         re.compile(r"\bNSE for [^,]+,\s*(?P<name>[A-Z][a-z]+(?:\s*[A-Z][a-z]+){1,2})\b"),
         re.compile(r"\bThanks,?\s*(?P<name>[A-Z][a-z]+(?:\s*[A-Z][a-z]+){1,2})\b"),
         re.compile(r"\b(?:To|From|Cc|Bcc)\s*:\s*(?P<name>[A-Z][a-z]+(?:\s*[A-Z][a-z]+){1,2})\s*<"),
+        re.compile(r"\b(?:To|From|Cc|Bcc)\s*:\s*(?P<name>[A-Z]{2,}(?:\s+[A-Z]{2,}){1,2})\s*<"),
         re.compile(r"\b(?P<name>[A-Z][a-z]+(?:\s*[A-Z][a-z]+){1,2})(?:[A-Z]{2,})\s*[–—-]\s*[A-Z]"),
     ]
 
