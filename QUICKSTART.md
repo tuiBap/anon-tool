@@ -26,7 +26,25 @@ Run this once per PowerShell session:
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
-## 4) Standard folders
+## 4) Launch the web UI
+From repo root:
+```powershell
+.\scripts\launch_web.ps1
+```
+
+Then open:
+```text
+http://127.0.0.1:7860
+```
+
+Use a different port if 7860 is already busy:
+```powershell
+.\scripts\launch_web.ps1 -ServerPort 7861
+```
+
+The installed shortcut `anon-tool-web` may not work on Windows unless your Python user scripts folder is on `PATH`; the launcher above avoids that issue.
+
+## 5) Standard folders
 Use these repo folders:
 - `runs/input` -> put raw PDF, TXT, and DOCX files here
 - `runs/output` -> sanitized PDF/TXT output
@@ -34,7 +52,7 @@ Use these repo folders:
 - `runs/logs` -> detailed logs
 - `runs/archive` -> optional source archive
 
-## 5) Single-file validation (recommended first)
+## 6) Single-file validation (recommended first)
 ```powershell
 .\scripts\validate_case.ps1 -InputPath "C:\path\Case_12345678 ~ Salesforce - Unlimited Edition.pdf" -FailOnWarnings
 ```
@@ -49,7 +67,7 @@ Expected result:
 - Output files (sanitized PDF/TXT, log) are written to the same folder as the input file by default.
 - Optional override: add `-WorkDir "C:\some\other\folder"`
 
-## 6) Batch run for multiple files
+## 7) Batch run for multiple files
 Put PDF, TXT, or DOCX files in `runs/input`, then:
 ```powershell
 .\scripts\run_batch.ps1 -FailOnWarnings -MoveToArchiveOnPass

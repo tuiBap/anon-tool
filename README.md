@@ -25,14 +25,19 @@ anon-tool redact \
 ```
 
 ## Web UI
-Launch the local dashboard interface:
-```bash
-anon-tool-web
+From repo root on PowerShell, launch the local dashboard interface:
+```powershell
+.\scripts\launch_web.ps1
 ```
 
 Then open:
 ```text
 http://127.0.0.1:7860
+```
+
+If you installed the package and your Python scripts directory is on `PATH`, this also works:
+```powershell
+anon-tool-web
 ```
 
 The web UI runs locally, uses the CPU processing path, and supports PDF, TXT, DOCX, or pasted text input.
