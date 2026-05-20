@@ -88,6 +88,7 @@ def build_app() -> gr.Blocks:
                                         label="",
                                         show_label=False,
                                         file_types=[".pdf", ".txt", ".docx"],
+                                        file_count="multiple",
                                         elem_classes=["file-picker"],
                                     )
                                 with gr.Tab("Paste text"):
@@ -168,11 +169,37 @@ def build_app() -> gr.Blocks:
                         interactive=False,
                     )
 
-                with gr.Group(visible=False, elem_classes=["page-panel"]) as saved_view:
+                with gr.Group(visible=False, elem_classes=["saved-page"]) as saved_view:
                     gr.Markdown("## Saved Outputs")
-                    gr.Markdown("Redacted text outputs are saved locally after each successful run.")
+                    gr.Markdown("Latest saved redacted outputs, sorted newest first.")
+                    saved_picker = gr.CheckboxGroup(
+                        label="Select saved files to download",
+                        choices=_saved_selection_choices(_load_saved_outputs()),
+                        interactive=True,
+                        elem_classes=["saved-picker"],
+                    )
+                    with gr.Row(elem_classes=["saved-actions"]):
+                        prepare_separate_button = gr.Button(
+                            "Prepare separate files",
+                            elem_classes=["nav-button"],
+                        )
+                        prepare_combined_button = gr.Button(
+                            "Prepare combined file",
+                            elem_classes=["nav-button"],
+                        )
+                        combined_download_file = gr.DownloadButton(
+                            "Download combined",
+                            size="sm",
+                            elem_classes=["small-button"],
+                        )
+                    saved_downloads = gr.Files(
+                        label="Prepared separate downloads",
+                        interactive=False,
+                        elem_classes=["saved-downloads"],
+                    )
+                    saved_status = gr.Markdown("Select one or more saved files.")
                     saved_table = gr.Dataframe(
-                        value=_saved_rows(_load_saved_outputs()),
+                        value=_saved_rows(_load_saved_outputs(), limit=25),
                         headers=["Time", "Source", "Redactions", "Warnings", "Path"],
                         datatype=["str", "str", "number", "number", "str"],
                         interactive=False,
@@ -211,6 +238,21 @@ def build_app() -> gr.Blocks:
         saved_nav.click(lambda: _view_updates("saved"), outputs=views)
         settings_nav.click(lambda: _view_updates("settings"), outputs=views)
         about_nav.click(lambda: _view_updates("about"), outputs=views)
+        saved_nav.click(
+            fn=refresh_saved_outputs,
+            inputs=[saved_state],
+            outputs=[saved_state, saved_picker, saved_table, saved_downloads, combined_download_file, saved_status],
+        )
+        prepare_separate_button.click(
+            fn=prepare_separate_downloads,
+            inputs=[saved_picker],
+            outputs=[saved_downloads, saved_status],
+        )
+        prepare_combined_button.click(
+            fn=prepare_combined_download,
+            inputs=[saved_picker],
+            outputs=[combined_download_file, saved_status],
+        )
 
         anonymize_button.click(
             fn=run_anonymization,
@@ -228,6 +270,10 @@ def build_app() -> gr.Blocks:
                 saved_state,
                 history_table,
                 saved_table,
+                saved_picker,
+                saved_downloads,
+                combined_download_file,
+                saved_status,
             ],
         )
 
@@ -256,36 +302,68 @@ def run_anonymization(
     str,
     list[list[str]],
     list[list[str]],
-    str | None,
+    Any,
     str,
     list[dict[str, Any]],
     list[dict[str, Any]],
     list[list[Any]],
     list[list[Any]],
+    Any,
+    Any,
+    Any,
+    str,
 ]:
     start = time.perf_counter()
     history = history or []
     saved_outputs = saved_outputs or []
     try:
-        lines, source_name = _load_source(uploaded_file, pasted_text)
+        sources = _load_sources(uploaded_file, pasted_text)
         profile = load_profile(None)
-        result = redact_lines(lines, profile)
+        run_items = []
+        total_redactions = 0
+        total_warnings = 0
+
+        for lines, source_name in sources:
+            item_start = time.perf_counter()
+            result = redact_lines(lines, profile)
+            item_elapsed = time.perf_counter() - item_start
+
+            original_text = _to_plain_text(lines)
+            redacted_text = _to_plain_text(result.redacted_lines)
+            details = _build_details(result, output_mode, item_elapsed, source_name)
+            download_path = _write_download(redacted_text, source_name, details)
+            record = _run_record(details, download_path)
+
+            total_redactions += len(result.spans)
+            total_warnings += len(result.warnings)
+            run_items.append(
+                {
+                    "source_name": source_name,
+                    "original_text": original_text,
+                    "redacted_text": redacted_text,
+                    "details": details,
+                    "download_path": download_path,
+                    "record": record,
+                }
+            )
+
         elapsed = time.perf_counter() - start
 
-        original_text = _to_plain_text(lines)
-        redacted_text = _to_plain_text(result.redacted_lines)
-        details = _build_details(result, output_mode, elapsed, source_name)
+        first_item = run_items[0]
+        details = _batch_details(run_items, output_mode, elapsed)
         details_text = json.dumps(details, indent=2)
-        download_path = _write_download(redacted_text, source_name, details)
-        record = _run_record(details, download_path)
-        history = [record, *history]
-        saved_outputs = [record, *[item for item in saved_outputs if item.get("path") != download_path]]
-        status = _status_message(result)
+        records = [item["record"] for item in run_items]
+        download_path = str(first_item["download_path"])
+        history = [*records, *history]
+        new_paths = {record.get("path") for record in records}
+        saved_outputs = [*records, *[item for item in saved_outputs if item.get("path") not in new_paths]]
+        status = _batch_status(total_warnings, len(run_items))
+        saved_choices = _saved_selection_choices(saved_outputs)
 
         return (
-            original_text,
-            redacted_text,
-            _stats_html(result, output_mode, elapsed),
+            str(first_item["original_text"]),
+            str(first_item["redacted_text"]),
+            _stats_html(total_redactions, total_warnings, output_mode, elapsed),
             details_text,
             _details_rows(details),
             _warning_rows(details),
@@ -294,7 +372,11 @@ def run_anonymization(
             history,
             saved_outputs,
             _history_rows(history),
-            _saved_rows(saved_outputs),
+            _saved_rows(saved_outputs, limit=25),
+            gr.update(choices=saved_choices, value=[record["path"] for record in records[:25]]),
+            [record["path"] for record in records],
+            None,
+            f"Prepared {len(records)} new saved output file(s).",
         )
     except Exception as exc:
         details = {
@@ -315,22 +397,31 @@ def run_anonymization(
             history,
             saved_outputs,
             _history_rows(history),
-            _saved_rows(saved_outputs),
+            _saved_rows(saved_outputs, limit=25),
+            gr.update(),
+            None,
+            None,
+            "Select one or more saved files.",
         )
 
 
-def _load_source(uploaded_file: Any, pasted_text: str | None) -> tuple[list[InputLine], str]:
+def _load_sources(uploaded_file: Any, pasted_text: str | None) -> list[tuple[list[InputLine], str]]:
     if uploaded_file is not None:
-        path = Path(uploaded_file.name if hasattr(uploaded_file, "name") else str(uploaded_file))
-        input_type = _resolve_input_type(path, "auto")
-        return _read_input(path, input_type), path.name
+        uploaded_files = uploaded_file if isinstance(uploaded_file, list) else [uploaded_file]
+        sources = []
+        for item in uploaded_files:
+            path = Path(item.name if hasattr(item, "name") else str(item))
+            input_type = _resolve_input_type(path, "auto")
+            sources.append((_read_input(path, input_type), path.name))
+        if sources:
+            return sources
 
     text = (pasted_text or "").strip("\ufeff")
     if not text.strip():
-        raise ValueError("Upload a PDF, TXT, or DOCX file, or paste text first.")
+        raise ValueError("Upload one or more PDF, TXT, or DOCX files, or paste text first.")
 
     raw_lines = text.splitlines() or [text]
-    return [InputLine(page=1, line_no=index, text=line) for index, line in enumerate(raw_lines, start=1)], "pasted-text.txt"
+    return [([InputLine(page=1, line_no=index, text=line) for index, line in enumerate(raw_lines, start=1)], "pasted-text.txt")]
 
 
 def _build_details(result: Any, output_mode: str, elapsed: float, source_name: str) -> dict[str, Any]:
@@ -347,6 +438,52 @@ def _build_details(result: Any, output_mode: str, elapsed: float, source_name: s
         },
         "warnings": [asdict(warning) for warning in result.warnings],
         "residual_risk_checks": result.residual_risk_checks,
+    }
+
+
+def _batch_details(run_items: list[dict[str, Any]], output_mode: str, elapsed: float) -> dict[str, Any]:
+    if len(run_items) == 1:
+        details = dict(run_items[0]["details"])
+        details["summary"] = dict(details.get("summary", {}))
+        details["summary"]["processing_time_seconds"] = round(elapsed, 2)
+        return details
+
+    warnings = []
+    redaction_count = 0
+    by_label: dict[str, int] = {}
+    files = []
+    for item in run_items:
+        details = item["details"]
+        summary = details.get("summary", {})
+        redaction_count += int(summary.get("redaction_count", 0))
+        for label, count in summary.get("by_label", {}).items():
+            by_label[label] = by_label.get(label, 0) + int(count)
+        warnings.extend(details.get("warnings", []))
+        files.append(
+            {
+                "file": summary.get("file", ""),
+                "redaction_count": summary.get("redaction_count", 0),
+                "warnings": len(details.get("warnings", [])),
+                "processing_time_seconds": summary.get("processing_time_seconds", 0),
+                "download_path": item.get("download_path", ""),
+            }
+        )
+
+    return {
+        "schema_version": 1,
+        "summary": {
+            "output_mode": output_mode.lower(),
+            "redaction_count": redaction_count,
+            "by_label": by_label,
+            "decoded_mismatch": False,
+            "processing_time_seconds": round(elapsed, 2),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "file": f"{len(run_items)} uploaded files",
+            "file_count": len(run_items),
+        },
+        "files": files,
+        "warnings": warnings,
+        "residual_risk_checks": {},
     }
 
 
@@ -386,7 +523,7 @@ def _load_saved_outputs() -> list[dict[str, Any]]:
         records.append(
             {
                 "time": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
-                "source": path.name.rsplit(".anonymized.txt", 1)[0],
+                "source": _source_from_saved_filename(path.name),
                 "redactions": "",
                 "warnings": "",
                 "processing_time": "",
@@ -394,6 +531,11 @@ def _load_saved_outputs() -> list[dict[str, Any]]:
             }
         )
     return records
+
+
+def _source_from_saved_filename(name: str) -> str:
+    stem = name.rsplit(".anonymized.txt", 1)[0]
+    return re.sub(r"^[0-9T]+-", "", stem) or stem
 
 
 def _details_rows(details: dict[str, Any]) -> list[list[str]]:
@@ -439,22 +581,107 @@ def _history_rows(history: list[dict[str, Any]]) -> list[list[Any]]:
     ]
 
 
-def _saved_rows(saved_outputs: list[dict[str, Any]]) -> list[list[Any]]:
-    return [
-        [
-            item.get("time", ""),
-            item.get("source", ""),
-            item.get("redactions", ""),
-            item.get("warnings", ""),
-            item.get("path", ""),
-        ]
-        for item in saved_outputs
-    ]
+def _saved_rows(saved_outputs: list[dict[str, Any]], limit: int | None = None) -> list[list[Any]]:
+    rows = []
+    for item in _latest_existing_outputs(saved_outputs, limit=limit):
+        rows.append(
+            [
+                item.get("time", ""),
+                item.get("source", ""),
+                item.get("redactions", ""),
+                item.get("warnings", ""),
+                item.get("path", ""),
+            ]
+        )
+    return rows
 
 
-def _status_message(result: Any) -> str:
-    if result.warnings:
-        return f"Completed with {len(result.warnings)} warning(s). Review Details before sharing."
+def _latest_existing_outputs(saved_outputs: list[dict[str, Any]], limit: int | None = 25) -> list[dict[str, Any]]:
+    existing = [item for item in saved_outputs if _valid_saved_path(str(item.get("path", "")))]
+    existing.sort(key=lambda item: str(item.get("time", "")), reverse=True)
+    if limit is None:
+        return existing
+    return existing[:limit]
+
+
+def _saved_selection_choices(saved_outputs: list[dict[str, Any]], limit: int = 25) -> list[tuple[str, str]]:
+    choices = []
+    for item in _latest_existing_outputs(saved_outputs, limit=limit):
+        path = str(item.get("path", ""))
+        label = f"{item.get('time', '')} | {item.get('source', '')} | {path}"
+        choices.append((label, path))
+    return choices
+
+
+def _valid_saved_path(path: str) -> bool:
+    if not path:
+        return False
+    try:
+        candidate = Path(path)
+        return candidate.exists() and candidate.is_file()
+    except OSError:
+        return False
+
+
+def refresh_saved_outputs(
+    saved_outputs: list[dict[str, Any]] | None,
+) -> tuple[list[dict[str, Any]], Any, list[list[Any]], Any, Any, str]:
+    refreshed = _merge_saved_outputs(saved_outputs or [])
+    return (
+        refreshed,
+        gr.update(choices=_saved_selection_choices(refreshed), value=[]),
+        _saved_rows(refreshed, limit=25),
+        None,
+        None,
+        "Select one or more saved files.",
+    )
+
+
+def _merge_saved_outputs(saved_outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_path = {str(item.get("path", "")): item for item in _load_saved_outputs()}
+    by_path.update({str(item.get("path", "")): item for item in saved_outputs if item.get("path")})
+    return _latest_existing_outputs(list(by_path.values()), limit=None)
+
+
+def prepare_separate_downloads(selected_paths: list[str] | None) -> tuple[list[str] | None, str]:
+    paths = _selected_saved_paths(selected_paths)
+    if not paths:
+        return None, "Select one or more saved files."
+    file_label = "file" if len(paths) == 1 else "files"
+    return paths, f"Prepared {len(paths)} separate {file_label}."
+
+
+def prepare_combined_download(selected_paths: list[str] | None) -> tuple[str | None, str]:
+    paths = _selected_saved_paths(selected_paths)
+    if not paths:
+        return None, "Select one or more saved files."
+    combined_path = _write_combined_download(paths)
+    return combined_path, f"Prepared one combined file from {len(paths)} saved output file(s)."
+
+
+def _selected_saved_paths(selected_paths: list[str] | None) -> list[str]:
+    if not selected_paths:
+        return []
+    return [path for path in selected_paths if _valid_saved_path(path)]
+
+
+def _write_combined_download(paths: list[str]) -> str:
+    SAVED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).isoformat()
+    compact_ts = re.sub(r"[^0-9T]", "", timestamp.split("+", 1)[0].replace(":", ""))
+    output = SAVED_OUTPUT_DIR / f"{compact_ts}-combined.anonymized.txt"
+    sections = []
+    for path in paths:
+        source = Path(path)
+        sections.append(f"===== {source.name} =====\n{source.read_text(encoding='utf-8')}")
+    output.write_text("\n\n".join(sections), encoding="utf-8")
+    return str(output)
+
+
+def _batch_status(warnings_count: int, file_count: int) -> str:
+    file_label = "file" if file_count == 1 else "files"
+    if warnings_count:
+        return f"Completed {file_count} {file_label} with {warnings_count} warning(s). Review Details before sharing."
     return "Sensitive fields were detected and redacted."
 
 
@@ -478,12 +705,12 @@ def _empty_stats(error: bool = False) -> str:
     )
 
 
-def _stats_html(result: Any, output_mode: str, elapsed: float) -> str:
-    warning_label = "warning" if len(result.warnings) == 1 else "warnings"
+def _stats_html(redaction_count: int, warnings_count: int, output_mode: str, elapsed: float) -> str:
+    warning_label = "warning" if warnings_count == 1 else "warnings"
     return _stat_cards(
         [
-            (f"{len(result.spans)} redactions", "Detected & redacted", "scan"),
-            (f"{len(result.warnings)} {warning_label}", "Review in Details", "warn"),
+            (f"{redaction_count} redactions", "Detected & redacted", "scan"),
+            (f"{warnings_count} {warning_label}", "Review in Details", "warn"),
             (output_mode, "Output mode", "doc"),
             (f"{elapsed:.2f}s", "Processing time", "time"),
         ]
@@ -687,7 +914,7 @@ def _css() -> str:
       min-width: 0;
     }
 
-    .control-panel, .stats-grid, .compare-grid, .details-panel, .page-panel {
+    .control-panel, .stats-grid, .compare-grid, .details-panel, .page-panel, .saved-page {
       max-width: 1600px;
     }
 
@@ -781,6 +1008,13 @@ def _css() -> str:
       min-height: 520px;
     }
 
+    .saved-page {
+      border: 1px solid var(--border) !important;
+      border-radius: 8px !important;
+      background: rgba(18, 31, 25, 0.88) !important;
+      padding: 22px !important;
+    }
+
     .panel-header {
       align-items: center;
       gap: 8px !important;
@@ -804,6 +1038,26 @@ def _css() -> str:
       border: 1px solid var(--border) !important;
       color: var(--text) !important;
       font-weight: 600 !important;
+    }
+
+    .saved-actions {
+      align-items: end;
+      gap: 12px !important;
+    }
+
+    .saved-picker {
+      max-height: 360px;
+      overflow: auto;
+    }
+
+    .saved-picker label {
+      font-family: "JetBrains Mono", Consolas, monospace !important;
+      font-size: 12px !important;
+      line-height: 1.35 !important;
+    }
+
+    .saved-downloads {
+      margin-top: 10px;
     }
 
     textarea, input, .wrap, .block, .form {
