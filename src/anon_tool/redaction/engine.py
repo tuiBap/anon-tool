@@ -24,6 +24,7 @@ def redact_lines(lines: list[InputLine], profile: ProfileConfig) -> RedactionRes
 
     for line in lines:
         line_spans = _detect_pattern_spans(line, profile)
+        line_spans.extend(_detect_labeled_pii_context(line, profile))
         line_spans.extend(_detect_context_names(line, profile))
         line_spans.extend(_detect_customer_company_context(line, profile))
         line_spans.extend(_detect_company_legal_names(line))
@@ -157,6 +158,174 @@ def _detect_context_names(line: InputLine, profile: ProfileConfig) -> list[Detec
                         original_text=normalized,
                     )
                 )
+    return spans
+
+
+def _detect_labeled_pii_context(line: InputLine, profile: ProfileConfig) -> list[DetectedSpan]:
+    text = line.text
+    preserve_spans = _collect_preserve_spans(text, profile)
+    spans: list[DetectedSpan] = []
+
+    label_patterns: list[tuple[str, str, str]] = [
+        (
+            "context.contact_name",
+            "person_name",
+            r"(?:\b(?:Contact Name|Full Name|Display Name)\s+|^Name\s+)(?P<value>[A-Z][A-Z'-]+(?:\s+[A-Z][A-Z'-]+){1,3}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b(?=\s+(?:Account Name|Company|Customer|Email|Phone|Reference|Contact Region)\b|[,;]|$)",
+        ),
+        (
+            "context.contact_name",
+            "person_name",
+            r"\bContact Name\s+(?P<value>[A-Z][A-Z'-]+|[A-Z][a-z]+)\s+\[REDACTED_",
+        ),
+        (
+            "context.salesforce_user_name",
+            "person_name",
+            r"\b(?:Created By|Last Modified By|Case Owner)\s+(?P<value>[A-Z][A-Za-z0-9_.'-]+(?:\s+[A-Z][A-Za-z0-9_.'-]+){1,3})\b",
+        ),
+        (
+            "context.concatenated_user_name",
+            "person_name",
+            r"\bUser(?P<value>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b",
+        ),
+        (
+            "context.salutation_name",
+            "person_name",
+            r"\b(?:Hi|Hello|Dear)\s+(?P<value>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})(?=[,:\s])",
+        ),
+        (
+            "context.signature_name",
+            "person_name",
+            r"\b(?:Regards|Best Regards|Thanks|Thank you),?\s*(?P<value>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b",
+        ),
+        (
+            "context.transcript_speaker",
+            "person_name",
+            r"^(?P<value>[A-Z][A-Za-z'.-]+(?:\s+[A-Z][A-Za-z'.-]+){1,3})\s+(?:(?:started|stopped)\s+transcription|\d{1,2}:\d{2})\b",
+        ),
+        (
+            "context.case_owner_change",
+            "person_name",
+            r"\bCase Owner from\s+(?P<value>[A-Z][A-Za-z_.'-]+(?:\s+[A-Z][A-Za-z_.'-]+){1,3})\s+to\b",
+        ),
+        (
+            "context.case_owner_change",
+            "person_name",
+            r"\bCase Owner from\s+[A-Z][A-Za-z_.'-]+(?:\s+[A-Z][A-Za-z_.'-]+){1,3}\s+to\s+(?P<value>[A-Z][A-Za-z_.'-]+(?:\s+[A-Z][A-Za-z_.'-]+){1,3})\b",
+        ),
+        (
+            "context.labeled_phone",
+            "phone",
+            r"\b(?:Phone|Mobile|Cell|Business Phone|Partner Business Phone)\s*(?P<value>(?:\+?1\s*)?\d{10})(?!\d)\b",
+        ),
+        (
+            "context.username",
+            "account_id",
+            r"\b(?:user(?:name)?|login|owner|assigned\s+to)\s*(?:is|:|=)?\s*(?P<value>[A-Z0-9_.\\-]{3,})\b",
+        ),
+    ]
+    for rule_id, category, pattern in label_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            value = match.group("value")
+            if _is_ignored_context_value(value):
+                continue
+            start = match.start("value")
+            end = match.end("value")
+            if _overlaps_preserve(start, end, preserve_spans):
+                continue
+            spans.append(
+                DetectedSpan(
+                    page=line.page,
+                    line=line.line_no,
+                    start=start,
+                    end=end,
+                    category=category,
+                    confidence="high",
+                    rule_id=rule_id,
+                    original_text=value,
+                )
+            )
+
+    spans.extend(_detect_sensitive_artifacts(line, preserve_spans))
+    return spans
+
+
+def _is_ignored_context_value(value: str) -> bool:
+    normalized = value.strip().lower()
+    ignored_values = {
+        "new activity",
+        "pending customer",
+        "pending support",
+        "support portal",
+        "value not assigned",
+        "unknown source",
+    }
+    ignored_parts = {
+        "account",
+        "address",
+        "case",
+        "comment",
+        "company",
+        "contact",
+        "customer",
+        "email",
+        "error",
+        "information",
+        "manager",
+        "mobile",
+        "name",
+        "phone",
+        "portal",
+        "product",
+        "service",
+        "status",
+        "support",
+        "system",
+        "user",
+        "version",
+    }
+    return normalized in ignored_values or any(part in ignored_parts for part in normalized.split())
+
+
+def _detect_sensitive_artifacts(line: InputLine, preserve_spans: list[tuple[int, int]]) -> list[DetectedSpan]:
+    artifact_patterns: list[tuple[str, str, str]] = [
+        ("url.salesforce", "internal_url", r"\bhttps?://[^\s<>'\")\]]*\.salesforce\.com/[^\s<>'\")\]]*"),
+        ("url.internal_host", "internal_url", r"\bhttps?://[A-Z0-9_-]+(?::\d{2,5})?(?:/[^\s<>'\")\]]*)?"),
+        ("url.any", "internal_url", r"\bhttps?://[^\s<>'\")\]]+"),
+        (
+            "hostname.internal",
+            "internal_url",
+            r"\b(?:[A-Z]{2}\d{2}[A-Z]{3,}\d{3,}|[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.(?:local|internal|corp|lan|mil|otxlab\.net))(?::\d{2,5})?\b",
+        ),
+        (
+            "path.internal",
+            "internal_url",
+            r"(?:[A-Z]:\\(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\r\n]+|\\\\[A-Z0-9_.-]+\\[^\s]+|/(?:opt|etc|var|home|users|usr|tmp|srv|mnt|root)(?:/[^\s,;:)\]]+)+)",
+        ),
+        ("salesforce.ref", "account_id", r"\bref:![A-Z0-9.:-]+!?[A-Z0-9.:!-]*\b"),
+        ("salesforce.object_id", "account_id", r"\b(?:500|701)[A-Z0-9]{12,15}\b"),
+        ("subscription.said", "customer_id", r"\b(?:Sub\s*)?SAID[A-Z0-9-]{6,}\b"),
+        ("arcsight.entity_id", "account_id", r"\b(?:MA|VM)-[A-Z0-9+/=_-]{12,}\b"),
+        ("log.device_id", "account_id", r"\b(?:New device found|First event from)\s+\[(?P<device>[A-Z0-9_.-]{5,})\]?"),
+    ]
+    spans: list[DetectedSpan] = []
+    for rule_id, category, pattern in artifact_patterns:
+        for match in re.finditer(pattern, line.text, re.IGNORECASE):
+            start = match.start("device") if "device" in match.groupdict() else match.start()
+            end = match.end("device") if "device" in match.groupdict() else match.end()
+            if _overlaps_preserve(start, end, preserve_spans):
+                continue
+            spans.append(
+                DetectedSpan(
+                    page=line.page,
+                    line=line.line_no,
+                    start=start,
+                    end=end,
+                    category=category,
+                    confidence="high",
+                    rule_id=rule_id,
+                    original_text=line.text[start:end],
+                )
+            )
     return spans
 
 
@@ -313,16 +482,23 @@ def _detect_company_legal_names(line: InputLine) -> list[DetectedSpan]:
     )
     spans: list[DetectedSpan] = []
     for match in pattern.finditer(line.text):
+        start = match.start()
+        original_text = match.group(0)
+        for label in ["Account Name", "Company Name", "DNB Company Name", "DNB VI Company Name", "Company"]:
+            label_match = re.search(rf"\b{re.escape(label)}\s+", original_text, re.IGNORECASE)
+            if label_match:
+                start = match.start() + label_match.end()
+                original_text = line.text[start : match.end()]
         spans.append(
             DetectedSpan(
                 page=line.page,
                 line=line.line_no,
-                start=match.start(),
+                start=start,
                 end=match.end(),
                 category="company_name",
                 confidence="high",
                 rule_id="pattern.company_legal_name",
-                original_text=match.group(0),
+                original_text=original_text,
             )
         )
     return spans
@@ -472,6 +648,21 @@ def _residual_scan(lines: list[InputLine]) -> list[str]:
     findings: list[str] = []
     for line in lines:
         for label, pattern in checks:
-            if pattern.search(line.text):
+            for match in pattern.finditer(line.text):
+                if _residual_match_is_ignored(line.text, match):
+                    continue
                 findings.append(f"{label} match remains at p{line.page}:l{line.line_no}")
+                break
     return findings
+
+
+def _residual_match_is_ignored(text: str, match: re.Match[str]) -> bool:
+    matched = match.group(0).lower()
+    text_l = text.lower()
+    if "portal.microfocus.com/s/article/km" in text_l:
+        return True
+    if matched == "salesforce.com" and "all rights reserved" in text_l:
+        return True
+    if matched == "default.com" and "default.com.arcsight" in text_l:
+        return True
+    return False

@@ -206,7 +206,7 @@ def test_redacts_api_key_with_space_separator() -> None:
     assert "abc123def456" not in out
 
 
-def test_residual_scan_flags_urls_hostnames_paths_and_usernames() -> None:
+def test_redacts_urls_hostnames_paths_and_usernames_before_residual_scan() -> None:
     lines = [
         InputLine(page=1, line_no=1, text="Portal: https://support.example.com/case/123"),
         InputLine(page=1, line_no=2, text="Manager host esm-prod-01.internal.local is slow"),
@@ -214,11 +214,12 @@ def test_residual_scan_flags_urls_hostnames_paths_and_usernames() -> None:
         InputLine(page=1, line_no=4, text=r"Login: ACME\jsmith"),
     ]
     result = redact_lines(lines, default_profile())
-    checks = "\n".join(result.residual_risk_checks)
-    assert "url_like match remains" in checks
-    assert "hostname_like match remains" in checks
-    assert "internal_path_like match remains" in checks
-    assert "username_like match remains" in checks
+    output = "\n".join(line.text for line in result.redacted_lines)
+    assert "https://support.example.com/case/123" not in output
+    assert "esm-prod-01.internal.local" not in output
+    assert r"C:\ArcSight\current\logs\console.log" not in output
+    assert r"ACME\jsmith" not in output
+    assert not result.residual_risk_checks
 
 
 def test_residual_scan_flags_tokens_and_keys() -> None:
@@ -288,3 +289,97 @@ def test_sensitive_installation_order_does_not_raise_uncertain_warning() -> None
     ]
     result = redact_lines(lines, default_profile())
     assert not any(w.rule_id == "uncertain.context" for w in result.warnings)
+
+
+def test_redacts_salesforce_contact_phone_and_service_account_fields() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="Contact Name Gabriel Davis Account Name Example Corp"),
+        InputLine(page=1, line_no=2, text="Preferred Language English Phone 7197218126"),
+        InputLine(page=1, line_no=3, text="Last Modified By SFDCProd ServiceAcct, 4/15/2026"),
+    ]
+    result = redact_lines(lines, default_profile())
+    out = [line.text for line in result.redacted_lines]
+    assert "Gabriel Davis" not in out[0]
+    assert "[REDACTED_PERSON]" in out[0]
+    assert "7197218126" not in out[1]
+    assert "[REDACTED_PHONE]" in out[1]
+    assert "SFDCProd ServiceAcct" not in out[2]
+    assert "[REDACTED_PERSON]" in out[2]
+
+
+def test_redacts_salutation_transcript_and_case_owner_names() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="Hi Omoyemi,"),
+        InputLine(page=1, line_no=2, text="David Bush started transcription"),
+        InputLine(page=1, line_no=3, text="Chuck Grochowski   0:05"),
+        InputLine(page=1, line_no=4, text="ActionChanged Case Owner from Silvana Samper to David Bush."),
+    ]
+    result = redact_lines(lines, default_profile())
+    output = "\n".join(line.text for line in result.redacted_lines)
+    for name in ["Omoyemi", "David Bush", "Chuck Grochowski", "Silvana Samper"]:
+        assert name not in output
+    assert output.count("[REDACTED_PERSON]") >= 5
+
+
+def test_redacts_urls_internal_hosts_paths_refs_and_subscription_ids() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="https://microfocus.my.salesforce.com/500Q400000YTXoKIAX/p 29/31"),
+        InputLine(page=1, line_no=2, text="Link attached: https://rdapps.otxlab.net/quixy/#/viewEntity/OCTIM77JK4629476"),
+        InputLine(page=1, line_no=3, text="CWSAPI for https://DC01SIM0041:9003/cwsapi/services/v1 id [MA-j4vwgo8BABCAFSX6vdyNCw==.VM-9Lrwgo8BABCAFyX6vdyNCw==]"),
+        InputLine(page=1, line_no=4, text="/opt/arcsight/arcmc/userdata/logs/pgsql/serverlog"),
+        InputLine(page=1, line_no=5, text="Subject [ ref:!00D1t0vhDP.!500Q40YTXoK:ref ]"),
+        InputLine(page=1, line_no=6, text="Cannot access downloads for Sub SAID2153185232-A."),
+    ]
+    result = redact_lines(lines, default_profile())
+    output = "\n".join(line.text for line in result.redacted_lines)
+    assert "salesforce.com" not in output
+    assert "rdapps.otxlab.net" not in output
+    assert "DC01SIM0041" not in output
+    assert "/opt/arcsight" not in output
+    assert "ref:!00D1t0vhDP" not in output
+    assert "SAID2153185232-A" not in output
+
+
+def test_redacts_username_value_after_concatenated_username_label() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="Internal HPRC account has been deleted for usernameSP20d7b4"),
+        InputLine(page=1, line_no=2, text="Internal HPRC account has been disabled for username SP20d7b4"),
+    ]
+    result = redact_lines(lines, default_profile())
+    output = "\n".join(line.text for line in result.redacted_lines)
+    assert "SP20d7b4" not in output
+    assert output.count("[REDACTED_ACCOUNT_ID]") == 2
+
+
+def test_redacts_partially_redacted_contact_name_and_concatenated_user_name() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="Contact Name AMALESWARA [REDACTED_COMPANY]"),
+        InputLine(page=1, line_no=2, text="UserCharles Okocha"),
+    ]
+    result = redact_lines(lines, default_profile())
+    output = "\n".join(line.text for line in result.redacted_lines)
+    assert "AMALESWARA" not in output
+    assert "Charles Okocha" not in output
+    assert output.count("[REDACTED_PERSON]") == 2
+
+
+def test_redacts_device_ids_in_log_context_without_warning_on_java_package_names() -> None:
+    lines = [
+        InputLine(
+            page=1,
+            line_no=1,
+            text="[INFO ][default.com.arcsight.agent.loadable._DeviceEventCounter] New device found [xohlx217310.68.154.116]",
+        ),
+        InputLine(
+            page=1,
+            line_no=2,
+            text="[default.com.arcsight.agent.loadable._EventCounter] First event from [pgwlx1035] received.",
+        ),
+        InputLine(page=1, line_no=3, text="Copyright © 2000-2026 salesforce.com, inc. All rights reserved."),
+        InputLine(page=1, line_no=4, text="https://portal.microfocus.com/s/article/KM000045377"),
+    ]
+    result = redact_lines(lines, default_profile())
+    output = "\n".join(line.text for line in result.redacted_lines)
+    assert "xohlx217310.68.154.116" not in output
+    assert "pgwlx1035" not in output
+    assert not result.residual_risk_checks
