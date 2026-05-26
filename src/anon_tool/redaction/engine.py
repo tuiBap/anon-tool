@@ -111,7 +111,78 @@ def _collect_preserve_spans(text: str, profile: ProfileConfig) -> list[tuple[int
     for pattern in profile.preserve_patterns:
         for match in pattern.finditer(text):
             spans.append((match.start(), match.end()))
+    spans.extend(_collect_software_version_spans(text))
     return spans
+
+
+def _collect_software_version_spans(text: str) -> list[tuple[int, int]]:
+    version_pattern = re.compile(
+        r"\b(?:[A-Z][A-Z0-9_.+-]*\s+){0,4}"
+        r"(?:version|versions?|ver\.?|v)\s+"
+        r"\d+(?:\.\d+){1,5}(?:[-+][A-Z0-9_.-]+)?\b"
+        r"(?:\s*\((?:patch|build|hotfix|hf)\s+\d+\))?",
+        re.IGNORECASE,
+    )
+    package_pattern = re.compile(
+        r"\b[A-Z][A-Z0-9_.+-]*(?:\s+[A-Z][A-Z0-9_.+-]*){0,4}\s+"
+        r"\d+(?:\.\d+){1,5}(?:[-+][A-Z0-9_.-]+)?\b",
+        re.IGNORECASE,
+    )
+
+    spans: list[tuple[int, int]] = []
+    for pattern in (version_pattern, package_pattern):
+        for match in pattern.finditer(text):
+            if _software_version_match_is_safe_to_preserve(text, match):
+                spans.append((match.start(), match.end()))
+    return spans
+
+
+def _software_version_match_is_safe_to_preserve(text: str, match: re.Match[str]) -> bool:
+    value = match.group(0)
+    lower_value = value.lower()
+    if re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", value):
+        return False
+    if re.search(r"\b(?:version|versions?|ver\.?|v)\b", lower_value):
+        return True
+
+    prefix = value[: re.search(r"\d", value).start()].strip()
+    if not prefix:
+        return False
+    blocked_prefixes = {
+        "is",
+        "was",
+        "are",
+        "were",
+        "ip",
+        "ipv4",
+        "host",
+        "server",
+        "address",
+        "gateway",
+        "dns",
+        "proxy",
+        "node",
+        "client",
+    }
+    if prefix.lower() in blocked_prefixes:
+        return False
+    before = text[: match.start()].rstrip()
+    if before.endswith(("/", "\\", "@", "=")):
+        return False
+    return _looks_like_software_package_name(prefix)
+
+
+def _looks_like_software_package_name(value: str) -> bool:
+    tokens = value.split()
+    if not tokens:
+        return False
+    token = tokens[-1]
+    return (
+        bool(re.search(r"[A-Za-z]\d|\d[A-Za-z]", token))
+        or bool(re.search(r"[._+-]", token))
+        or bool(re.search(r"[a-z][A-Z]", token))
+        or (token.isupper() and len(token) >= 2)
+    )
 
 
 def _overlaps_preserve(start: int, end: int, preserves: list[tuple[int, int]]) -> bool:

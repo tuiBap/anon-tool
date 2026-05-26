@@ -383,3 +383,24 @@ def test_redacts_device_ids_in_log_context_without_warning_on_java_package_names
     assert "xohlx217310.68.154.116" not in output
     assert "pgwlx1035" not in output
     assert not result.residual_risk_checks
+
+
+def test_preserves_software_package_versions_that_look_like_ipv4() -> None:
+    lines = [
+        InputLine(
+            page=1,
+            line_no=1,
+            text=(
+                "Below is the information from the scan regarding the log4j CVE findings "
+                "for the SEIM SmartConnectors version 8.5.0.1 (patch 1) currently installed."
+            ),
+        ),
+        InputLine(page=1, line_no=2, text="ArcMC 3.3.0.0 is also installed."),
+        InputLine(page=1, line_no=3, text="The server IP is 10.20.30.40."),
+    ]
+    result = redact_lines(lines, default_profile())
+    output = "\n".join(line.text for line in result.redacted_lines)
+    assert "SmartConnectors version 8.5.0.1 (patch 1)" in output
+    assert "ArcMC 3.3.0.0" in output
+    assert "10.20.30.40" not in output
+    assert "[REDACTED_IP]" in output
