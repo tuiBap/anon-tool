@@ -9,7 +9,7 @@ C/
 # Generated tool outputs
 artifacts/
 logs/
-output/
+/output/
 sample.txt
 sample.sanitized.pdf
 sample.sanitized.txt
@@ -34,3 +34,5 @@ runs/logs/*
 runs/archive/*
 !runs/archive/.gitkeep
 runs/batch_summary.csv
+runs/web-ui-settings.json
+runs/web-ui-settings.json.tmp

@@ -58,7 +58,7 @@ function Show-Help {
   Write-Host "  -Help, -h, -?         Show this help text and exit."
   Write-Host ""
   Write-Host "Outputs:"
-  Write-Host "  - Sanitized PDFs/TXT in OutputDir"
+  Write-Host "  - Sanitized Markdown files in OutputDir"
   Write-Host "  - Redaction logs in LogDir"
   Write-Host "  - batch_summary.csv at SummaryCsv"
   Write-Host ""
@@ -138,8 +138,7 @@ foreach ($inputFile in $inputFiles) {
   $stemKey = $stem.ToLowerInvariant()
   $outputStem = if ($stemCounts[$stemKey] -gt 1) { $inputFile.Name } else { $stem }
   $safeStem = ($outputStem -replace '[\\/:*?"<>|]', "_")
-  $outPdf = Join-Path $OutputDir ($safeStem + ".sanitized.pdf")
-  $outTxt = Join-Path $OutputDir ($safeStem + ".sanitized.txt")
+  $outMarkdown = Join-Path $OutputDir ($safeStem + ".sanitized.md")
   $outReport = New-TemporaryFile
   $outLog = Join-Path $LogDir ($safeStem + ".redaction.log")
   $chatgptExportPath = ""
@@ -152,9 +151,8 @@ foreach ($inputFile in $inputFiles) {
   Write-Step ("Processing: {0}" -f $inputFile.FullName)
   $cliOutput = & python -m anon_tool.cli redact `
     --input $inputFile.FullName `
-    --output $outPdf `
+    --output $outMarkdown `
     --report $outReport `
-    --also-write-txt $outTxt `
     --log-file $outLog `
     --warn-threshold $warnThreshold `
     @chatgptArgs 2>&1
@@ -187,8 +185,7 @@ foreach ($inputFile in $inputFiles) {
 
   $results.Add([PSCustomObject]@{
     input_file = $inputFile.FullName
-    output_pdf = (Resolve-Path -LiteralPath $outPdf -ErrorAction SilentlyContinue).Path
-    output_txt = (Resolve-Path -LiteralPath $outTxt -ErrorAction SilentlyContinue).Path
+    output_markdown = (Resolve-Path -LiteralPath $outMarkdown -ErrorAction SilentlyContinue).Path
     report_file = ""
     log_file = (Resolve-Path -LiteralPath $outLog -ErrorAction SilentlyContinue).Path
     cli_exit_code = $exitCode

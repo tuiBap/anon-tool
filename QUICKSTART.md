@@ -47,7 +47,7 @@ The installed shortcut `anon-tool-web` may not work on Windows unless your Pytho
 ## 5) Standard folders
 Use these repo folders:
 - `runs/input` -> put raw PDF, TXT, and DOCX files here
-- `runs/output` -> sanitized PDF/TXT output
+- `runs/output` -> sanitized Markdown output by default
 - `runs/reports` -> retained for CLI/manual report output
 - `runs/logs` -> detailed logs
 - `runs/archive` -> optional source archive
@@ -64,7 +64,7 @@ Important:
 Expected result:
 - `PASS`
 - `Warnings: 0` (because `-FailOnWarnings`)
-- Output files (sanitized PDF/TXT, log) are written to the same folder as the input file by default.
+- Output files (sanitized Markdown and log) are written to the same folder as the input file by default.
 - Optional override: add `-WorkDir "C:\some\other\folder"`
 
 ## 7) Batch run for multiple files

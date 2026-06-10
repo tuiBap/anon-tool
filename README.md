@@ -6,7 +6,7 @@
 - Input support for `.pdf`, `.txt`, and `.docx`
 - Deterministic redaction rules (no model dependency)
 - Typed placeholders such as `[REDACTED_EMAIL]`
-- Sanitized PDF output for downstream summarization
+- Markdown output by default, with text and PDF options
 - JSON redaction report (CLI mode; script runners keep report output temporary)
 - Detailed audit logging
 
@@ -19,7 +19,7 @@ pip install -e .
 ```bash
 anon-tool redact \
   --input "C:\path\case.pdf" \
-  --output "C:\path\case.sanitized.pdf" \
+  --output "C:\path\case.sanitized.md" \
   --report "C:\path\case.report.json" \
   --chatgpt-export "C:\path\case.chatgpt.txt"
 ```
@@ -47,6 +47,7 @@ The web UI runs locally, uses the CPU processing path, and supports PDF, TXT, DO
 - `--log-raw-values true|false` (default `false`)
 - `--warn-threshold <int>` (default `99999`)
 - `--input-type auto|pdf|txt|docx` (default `auto`)
+- `--output-format markdown|text|pdf` (default `markdown`)
 - `--also-write-txt <path>`
 - `--chatgpt-export <path>`
 - `--config <policy_rules.yaml>`
@@ -63,7 +64,7 @@ With a real file:
 ```
 
 Default output location for `validate_case.ps1`:
-- Sanitized PDF/TXT and log are written to the same directory as the input file.
+- Sanitized Markdown and log are written to the same directory as the input file.
 - Optional override: `-WorkDir "C:\some\other\folder"`
 
 ## Standard Run Folder
@@ -71,7 +72,7 @@ Use this structure for repeatable runs:
 ```text
 runs/
   input/      # place raw PDF, TXT, and DOCX files here
-  output/     # sanitized pdf/txt
+  output/     # sanitized Markdown by default
   reports/    # retained for CLI/manual use
   logs/       # redaction logs
   archive/    # optional post-run archive
@@ -88,7 +89,7 @@ Batch options:
 | Option | Description | Default |
 |---|---|---|
 | `-InputDir` | Folder to scan for PDF, TXT, and DOCX files | `.\\runs\\input` |
-| `-OutputDir` | Folder for sanitized PDF/TXT outputs | same as `-InputDir` |
+| `-OutputDir` | Folder for sanitized Markdown outputs | same as `-InputDir` |
 | `-ReportDir` | Kept for compatibility; batch runs use temporary reports | `.\\runs\\reports` |
 | `-LogDir` | Folder for redaction logs | same as `-InputDir` |
 | `-ArchiveDir` | Folder for source files when `-MoveToArchiveOnPass` is set | `.\\runs\\archive` |
@@ -120,5 +121,5 @@ Run-level behavior:
 - Exit code `2` if `-FailOnWarnings` is set and any file has warnings.
 
 ## Notes
-- The output PDF is a normalized text rendering of the sanitized content.
+- Markdown is the default output. Use `--output-format text` or `--output-format pdf` for the other formats.
 - Raw values are hidden in audit logs by default. If detailed logging is enabled with raw values, logs may contain sensitive source data.

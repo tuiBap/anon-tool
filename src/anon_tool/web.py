@@ -11,7 +11,8 @@ from typing import Any
 
 import gradio as gr
 
-from anon_tool.cli import _read_input, _resolve_input_type, _to_plain_text
+from anon_tool.cli import _read_input, _resolve_input_type, _to_markdown, _to_plain_text
+from anon_tool.output.pdf_writer import write_sanitized_pdf
 from anon_tool.redaction.engine import redact_lines
 from anon_tool.rules.policy_profile_opentext import load_profile
 from anon_tool.types import InputLine
@@ -19,6 +20,15 @@ from anon_tool.types import InputLine
 
 APP_TITLE = "Anon Tool"
 SAVED_OUTPUT_DIR = Path("runs/output/web-ui")
+WEB_SETTINGS_PATH = Path("runs/web-ui-settings.json")
+DEFAULT_WEB_SETTINGS = {
+    "default_output_format": "Markdown",
+    "retention_days": 30,
+}
+OUTPUT_FORMAT_CHOICES = ["Markdown", "Plain text", "PDF"]
+DEFAULT_OUTPUT_FORMAT_CHOICES = ["Markdown", "Plain text"]
+RETENTION_DAY_CHOICES = [10, 30, 90]
+RETENTION_UI_CHOICES = [(f"{days} days", days) for days in RETENTION_DAY_CHOICES]
 
 
 def launch_app(
@@ -59,12 +69,16 @@ def _is_loopback_bind(server_name: str) -> bool:
 
 
 def build_app() -> gr.Blocks:
+    settings = _load_web_settings()
+    _cleanup_stale_outputs(int(settings["retention_days"]))
+    initial_saved_outputs = _load_saved_outputs()
+
     with gr.Blocks(
         title=APP_TITLE,
         fill_width=True,
     ) as app:
         history_state = gr.State([])
-        saved_state = gr.State(_load_saved_outputs())
+        saved_state = gr.State(initial_saved_outputs)
 
         gr.HTML(_shell_header())
 
@@ -100,16 +114,16 @@ def build_app() -> gr.Blocks:
                                         elem_classes=["paste-box"],
                                     )
                         with gr.Column(scale=2, elem_classes=["run-card"]):
-                            output_mode = gr.Dropdown(
-                                label="Output mode",
-                                choices=["Redacted"],
-                                value="Redacted",
-                                interactive=False,
+                            output_format = gr.Dropdown(
+                                label="Output format",
+                                choices=OUTPUT_FORMAT_CHOICES,
+                                value=str(settings["default_output_format"]),
+                                interactive=True,
                             )
                             anonymize_button = gr.Button("Anonymize", variant="primary", elem_classes=["run-button"])
                             status_line = gr.Markdown("Sensitive fields will be detected and redacted.")
 
-                    stats = gr.HTML(_empty_stats())
+                    stats = gr.HTML(_empty_stats(output_format=str(settings["default_output_format"])))
 
                     with gr.Row(elem_classes=["compare-grid"]):
                         with gr.Column(elem_classes=["text-panel"]):
@@ -127,8 +141,9 @@ def build_app() -> gr.Blocks:
                             with gr.Row(elem_classes=["panel-header"]):
                                 gr.Markdown("### Anonymized output")
                                 download_file = gr.DownloadButton(
-                                    "Download",
+                                    "Download output",
                                     size="sm",
+                                    interactive=False,
                                     elem_classes=["small-button", "download-button"],
                                 )
                             redacted_output = gr.Textbox(
@@ -174,7 +189,7 @@ def build_app() -> gr.Blocks:
                     gr.Markdown("Latest saved redacted outputs, sorted newest first.")
                     saved_picker = gr.CheckboxGroup(
                         label="Select saved files to download",
-                        choices=_saved_selection_choices(_load_saved_outputs()),
+                        choices=_saved_selection_choices(initial_saved_outputs),
                         interactive=True,
                         elem_classes=["saved-picker"],
                     )
@@ -199,26 +214,36 @@ def build_app() -> gr.Blocks:
                     )
                     saved_status = gr.Markdown("Select one or more saved files.")
                     saved_table = gr.Dataframe(
-                        value=_saved_rows(_load_saved_outputs(), limit=25),
+                        value=_saved_rows(initial_saved_outputs, limit=25),
                         headers=["Time", "Source", "Redactions", "Warnings", "Path"],
                         datatype=["str", "str", "number", "number", "str"],
                         interactive=False,
                     )
 
                 with gr.Group(visible=False, elem_classes=["page-panel"]) as settings_view:
-                    gr.Markdown(
-                        """
-                        ## Settings
-
-                        Current configuration:
-
-                        - Output mode: Redacted
-                        - Processing: local only
-                        - Supported inputs: PDF, TXT, DOCX, or pasted text
-                        - Saved outputs: redacted text files under `runs/output/web-ui`
-
-                        There are no user-editable settings yet.
-                        """
+                    gr.Markdown("## Settings")
+                    gr.Markdown("Configure dashboard defaults and automatic cleanup for saved web UI outputs.")
+                    with gr.Row(elem_classes=["settings-grid"]):
+                        default_output_setting = gr.Dropdown(
+                            label="Default output",
+                            choices=DEFAULT_OUTPUT_FORMAT_CHOICES,
+                            value=str(settings["default_output_format"]),
+                            interactive=True,
+                        )
+                        retention_setting = gr.Dropdown(
+                            label="Delete saved outputs older than",
+                            choices=RETENTION_UI_CHOICES,
+                            value=int(settings["retention_days"]),
+                            interactive=True,
+                            info="Applies to anonymized files in runs/output/web-ui.",
+                        )
+                    save_settings_button = gr.Button(
+                        "Save settings",
+                        variant="primary",
+                        elem_classes=["settings-save-button"],
+                    )
+                    settings_status = gr.Markdown(
+                        f"Current retention: {settings['retention_days']} days. Settings are saved locally."
                     )
 
                 with gr.Group(visible=False, elem_classes=["page-panel"]) as about_view:
@@ -253,10 +278,24 @@ def build_app() -> gr.Blocks:
             inputs=[saved_picker],
             outputs=[combined_download_file, saved_status],
         )
+        save_settings_button.click(
+            fn=save_web_settings,
+            inputs=[default_output_setting, retention_setting, saved_state],
+            outputs=[
+                output_format,
+                saved_state,
+                saved_picker,
+                saved_table,
+                saved_downloads,
+                combined_download_file,
+                saved_status,
+                settings_status,
+            ],
+        )
 
         anonymize_button.click(
             fn=run_anonymization,
-            inputs=[file_input, text_input, output_mode, history_state, saved_state],
+            inputs=[file_input, text_input, output_format, history_state, saved_state],
             outputs=[
                 original_output,
                 redacted_output,
@@ -292,7 +331,7 @@ def _theme() -> gr.themes.Base:
 def run_anonymization(
     uploaded_file: Any,
     pasted_text: str | None,
-    output_mode: str,
+    output_format: str,
     history: list[dict[str, Any]] | None,
     saved_outputs: list[dict[str, Any]] | None,
 ) -> tuple[
@@ -330,8 +369,8 @@ def run_anonymization(
 
             original_text = _to_plain_text(lines)
             redacted_text = _to_plain_text(result.redacted_lines)
-            details = _build_details(result, output_mode, item_elapsed, source_name)
-            download_path = _write_download(redacted_text, source_name, details)
+            details = _build_details(result, output_format, item_elapsed, source_name)
+            download_path = _write_download(result.redacted_lines, source_name, details, output_format)
             record = _run_record(details, download_path)
 
             total_redactions += len(result.spans)
@@ -350,7 +389,7 @@ def run_anonymization(
         elapsed = time.perf_counter() - start
 
         first_item = run_items[0]
-        details = _batch_details(run_items, output_mode, elapsed)
+        details = _batch_details(run_items, output_format, elapsed)
         details_text = json.dumps(details, indent=2)
         records = [item["record"] for item in run_items]
         download_path = str(first_item["download_path"])
@@ -363,11 +402,11 @@ def run_anonymization(
         return (
             str(first_item["original_text"]),
             str(first_item["redacted_text"]),
-            _stats_html(total_redactions, total_warnings, output_mode, elapsed),
+            _stats_html(total_redactions, total_warnings, output_format, elapsed),
             details_text,
             _details_rows(details),
             _warning_rows(details),
-            download_path,
+            gr.update(value=download_path, interactive=True),
             status,
             history,
             saved_outputs,
@@ -388,11 +427,11 @@ def run_anonymization(
         return (
             "",
             "",
-            _empty_stats(error=True),
+            _empty_stats(output_format=output_format, error=True),
             json.dumps(details, indent=2),
             _details_rows(details),
             _warning_rows(details),
-            None,
+            gr.update(value=None, interactive=False),
             f"Unable to anonymize input: {exc}",
             history,
             saved_outputs,
@@ -424,11 +463,12 @@ def _load_sources(uploaded_file: Any, pasted_text: str | None) -> list[tuple[lis
     return [([InputLine(page=1, line_no=index, text=line) for index, line in enumerate(raw_lines, start=1)], "pasted-text.txt")]
 
 
-def _build_details(result: Any, output_mode: str, elapsed: float, source_name: str) -> dict[str, Any]:
+def _build_details(result: Any, output_format: str, elapsed: float, source_name: str) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "summary": {
-            "output_mode": output_mode.lower(),
+            "output_mode": "redacted",
+            "output_format": output_format.lower(),
             "redaction_count": len(result.spans),
             "by_label": result.counts_by_category,
             "decoded_mismatch": False,
@@ -441,7 +481,7 @@ def _build_details(result: Any, output_mode: str, elapsed: float, source_name: s
     }
 
 
-def _batch_details(run_items: list[dict[str, Any]], output_mode: str, elapsed: float) -> dict[str, Any]:
+def _batch_details(run_items: list[dict[str, Any]], output_format: str, elapsed: float) -> dict[str, Any]:
     if len(run_items) == 1:
         details = dict(run_items[0]["details"])
         details["summary"] = dict(details.get("summary", {}))
@@ -472,7 +512,8 @@ def _batch_details(run_items: list[dict[str, Any]], output_mode: str, elapsed: f
     return {
         "schema_version": 1,
         "summary": {
-            "output_mode": output_mode.lower(),
+            "output_mode": "redacted",
+            "output_format": output_format.lower(),
             "redaction_count": redaction_count,
             "by_label": by_label,
             "decoded_mismatch": False,
@@ -487,13 +528,28 @@ def _batch_details(run_items: list[dict[str, Any]], output_mode: str, elapsed: f
     }
 
 
-def _write_download(text: str, source_name: str, details: dict[str, Any]) -> str:
+def _write_download(
+    lines: list[InputLine],
+    source_name: str,
+    details: dict[str, Any],
+    output_format: str = "Markdown",
+) -> str:
     SAVED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     stem = _safe_stem(source_name)
     timestamp = str(details.get("summary", {}).get("timestamp", datetime.now(timezone.utc).isoformat()))
     compact_ts = re.sub(r"[^0-9T]", "", timestamp.split("+", 1)[0].replace(":", ""))
-    output = SAVED_OUTPUT_DIR / f"{compact_ts}-{stem}.anonymized.txt"
-    output.write_text(text, encoding="utf-8")
+    normalized_format = output_format.strip().lower()
+    extension = {"markdown": "md", "plain text": "txt", "text": "txt", "pdf": "pdf"}.get(normalized_format)
+    if extension is None:
+        raise ValueError(f"Unsupported output format: {output_format}")
+
+    output = SAVED_OUTPUT_DIR / f"{compact_ts}-{stem}.anonymized.{extension}"
+    if normalized_format == "pdf":
+        write_sanitized_pdf(output, lines)
+    elif normalized_format == "markdown":
+        output.write_text(_to_markdown(lines), encoding="utf-8")
+    else:
+        output.write_text(_to_plain_text(lines), encoding="utf-8")
     return str(output)
 
 
@@ -519,7 +575,12 @@ def _load_saved_outputs() -> list[dict[str, Any]]:
     if not SAVED_OUTPUT_DIR.exists():
         return []
     records: list[dict[str, Any]] = []
-    for path in sorted(SAVED_OUTPUT_DIR.glob("*.anonymized.txt"), key=lambda item: item.stat().st_mtime, reverse=True):
+    saved_paths = [
+        path
+        for pattern in ("*.anonymized.md", "*.anonymized.txt", "*.anonymized.pdf")
+        for path in SAVED_OUTPUT_DIR.glob(pattern)
+    ]
+    for path in sorted(saved_paths, key=lambda item: item.stat().st_mtime, reverse=True):
         records.append(
             {
                 "time": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
@@ -533,8 +594,97 @@ def _load_saved_outputs() -> list[dict[str, Any]]:
     return records
 
 
+def _load_web_settings() -> dict[str, Any]:
+    settings = dict(DEFAULT_WEB_SETTINGS)
+    if not WEB_SETTINGS_PATH.exists():
+        return settings
+    try:
+        saved = json.loads(WEB_SETTINGS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return settings
+    if not isinstance(saved, dict):
+        return settings
+
+    output_format = str(saved.get("default_output_format", "")).strip()
+    if output_format in DEFAULT_OUTPUT_FORMAT_CHOICES:
+        settings["default_output_format"] = output_format
+    try:
+        retention_days = int(saved.get("retention_days", DEFAULT_WEB_SETTINGS["retention_days"]))
+    except (TypeError, ValueError):
+        retention_days = int(DEFAULT_WEB_SETTINGS["retention_days"])
+    if retention_days in RETENTION_DAY_CHOICES:
+        settings["retention_days"] = retention_days
+    return settings
+
+
+def _write_web_settings(default_output_format: str, retention_days: int) -> dict[str, Any]:
+    normalized_format = str(default_output_format).strip()
+    normalized_retention = int(retention_days)
+    if normalized_format not in DEFAULT_OUTPUT_FORMAT_CHOICES:
+        raise ValueError(f"Unsupported default output format: {default_output_format}")
+    if normalized_retention not in RETENTION_DAY_CHOICES:
+        raise ValueError(f"Unsupported output retention period: {retention_days}")
+
+    settings = {
+        "default_output_format": normalized_format,
+        "retention_days": normalized_retention,
+    }
+    WEB_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = WEB_SETTINGS_PATH.with_suffix(WEB_SETTINGS_PATH.suffix + ".tmp")
+    temporary_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    temporary_path.replace(WEB_SETTINGS_PATH)
+    return settings
+
+
+def _cleanup_stale_outputs(retention_days: int, now: datetime | None = None) -> tuple[int, int]:
+    if retention_days not in RETENTION_DAY_CHOICES:
+        raise ValueError(f"Unsupported output retention period: {retention_days}")
+    if not SAVED_OUTPUT_DIR.exists():
+        return 0, 0
+
+    reference_time = now or datetime.now(timezone.utc)
+    cutoff = reference_time.timestamp() - (retention_days * 24 * 60 * 60)
+    deleted = 0
+    failed = 0
+    for pattern in ("*.anonymized.md", "*.anonymized.txt", "*.anonymized.pdf"):
+        for path in SAVED_OUTPUT_DIR.glob(pattern):
+            try:
+                if path.stat().st_mtime < cutoff:
+                    path.unlink()
+                    deleted += 1
+            except OSError:
+                failed += 1
+    return deleted, failed
+
+
+def save_web_settings(
+    default_output_format: str,
+    retention_days: int,
+    saved_outputs: list[dict[str, Any]] | None,
+) -> tuple[Any, list[dict[str, Any]], Any, list[list[Any]], Any, Any, str, str]:
+    settings = _write_web_settings(default_output_format, retention_days)
+    deleted, failed = _cleanup_stale_outputs(int(settings["retention_days"]))
+    refreshed = _merge_saved_outputs(saved_outputs or [])
+    cleanup_status = f"Removed {deleted} stale output file(s)."
+    if failed:
+        cleanup_status += f" Could not remove {failed} locked or inaccessible file(s)."
+    return (
+        gr.update(value=settings["default_output_format"]),
+        refreshed,
+        gr.update(choices=_saved_selection_choices(refreshed), value=[]),
+        _saved_rows(refreshed, limit=25),
+        None,
+        None,
+        "Select one or more saved files.",
+        (
+            f"Settings saved. Default output: {settings['default_output_format']}. "
+            f"Retention: {settings['retention_days']} days. {cleanup_status}"
+        ),
+    )
+
+
 def _source_from_saved_filename(name: str) -> str:
-    stem = name.rsplit(".anonymized.txt", 1)[0]
+    stem = re.sub(r"\.anonymized\.(?:md|txt|pdf)$", "", name, flags=re.IGNORECASE)
     return re.sub(r"^[0-9T]+-", "", stem) or stem
 
 
@@ -542,7 +692,7 @@ def _details_rows(details: dict[str, Any]) -> list[list[str]]:
     summary = details.get("summary", {})
     rows = [
         ["Schema version", str(details.get("schema_version", ""))],
-        ["Output mode", str(summary.get("output_mode", ""))],
+        ["Output format", str(summary.get("output_format", ""))],
         ["Redaction count", str(summary.get("redaction_count", ""))],
         ["Decoded mismatch", str(summary.get("decoded_mismatch", ""))],
         ["Processing time", f"{summary.get('processing_time_seconds', '')}s"],
@@ -626,6 +776,8 @@ def _valid_saved_path(path: str) -> bool:
 def refresh_saved_outputs(
     saved_outputs: list[dict[str, Any]] | None,
 ) -> tuple[list[dict[str, Any]], Any, list[list[Any]], Any, Any, str]:
+    settings = _load_web_settings()
+    _cleanup_stale_outputs(int(settings["retention_days"]))
     refreshed = _merge_saved_outputs(saved_outputs or [])
     return (
         refreshed,
@@ -669,13 +821,22 @@ def _write_combined_download(paths: list[str]) -> str:
     SAVED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).isoformat()
     compact_ts = re.sub(r"[^0-9T]", "", timestamp.split("+", 1)[0].replace(":", ""))
-    output = SAVED_OUTPUT_DIR / f"{compact_ts}-combined.anonymized.txt"
+    output = SAVED_OUTPUT_DIR / f"{compact_ts}-combined.anonymized.md"
     sections = []
     for path in paths:
         source = Path(path)
-        sections.append(f"===== {source.name} =====\n{source.read_text(encoding='utf-8')}")
-    output.write_text("\n\n".join(sections), encoding="utf-8")
+        sections.append(f"# {source.name}\n\n{_read_saved_output(source).strip()}")
+    output.write_text("\n\n".join(sections) + "\n", encoding="utf-8")
     return str(output)
+
+
+def _read_saved_output(path: Path) -> str:
+    if path.suffix.lower() != ".pdf":
+        return path.read_text(encoding="utf-8")
+
+    from pypdf import PdfReader
+
+    return "\n\n".join((page.extract_text() or "").strip() for page in PdfReader(path).pages)
 
 
 def _batch_status(warnings_count: int, file_count: int) -> str:
@@ -685,13 +846,13 @@ def _batch_status(warnings_count: int, file_count: int) -> str:
     return "Sensitive fields were detected and redacted."
 
 
-def _empty_stats(error: bool = False) -> str:
+def _empty_stats(output_format: str = "Markdown", error: bool = False) -> str:
     if error:
         return _stat_cards(
             [
                 ("0 redactions", "Detected & redacted", "scan"),
                 ("Error", "Review details", "warn"),
-                ("Redacted", "Output mode", "doc"),
+                (output_format, "Output format", "doc"),
                 ("0.00s", "Processing time", "time"),
             ]
         )
@@ -699,19 +860,19 @@ def _empty_stats(error: bool = False) -> str:
         [
             ("0 redactions", "Detected & redacted", "scan"),
             ("0 mismatches", "Decoded mismatches", "shield"),
-            ("Redacted", "Output mode", "doc"),
+            (output_format, "Output format", "doc"),
             ("0.00s", "Processing time", "time"),
         ]
     )
 
 
-def _stats_html(redaction_count: int, warnings_count: int, output_mode: str, elapsed: float) -> str:
+def _stats_html(redaction_count: int, warnings_count: int, output_format: str, elapsed: float) -> str:
     warning_label = "warning" if warnings_count == 1 else "warnings"
     return _stat_cards(
         [
             (f"{redaction_count} redactions", "Detected & redacted", "scan"),
             (f"{warnings_count} {warning_label}", "Review in Details", "warn"),
-            (output_mode, "Output mode", "doc"),
+            (output_format, "Output format", "doc"),
             (f"{elapsed:.2f}s", "Processing time", "time"),
         ]
     )
@@ -1058,6 +1219,16 @@ def _css() -> str:
 
     .saved-downloads {
       margin-top: 10px;
+    }
+
+    .settings-grid {
+      gap: 18px !important;
+      align-items: end;
+    }
+
+    .settings-save-button {
+      max-width: 220px;
+      margin-top: 12px;
     }
 
     textarea, input, .wrap, .block, .form {

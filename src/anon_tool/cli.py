@@ -9,6 +9,7 @@ from anon_tool.ingest.pdf_reader import read_pdf_lines
 from anon_tool.ingest.docx_reader import read_docx_lines
 from anon_tool.ingest.txt_reader import read_txt_lines
 from anon_tool.logging.audit import default_log_path, write_audit_log
+from anon_tool.output.markdown_writer import render_markdown
 from anon_tool.output.pdf_writer import write_sanitized_pdf
 from anon_tool.output.report_writer import write_report
 from anon_tool.redaction.engine import redact_lines
@@ -38,7 +39,7 @@ def main() -> int:
     result = redact_lines(lines, profile)
 
     sanitized_text = _to_plain_text(result.redacted_lines)
-    write_sanitized_pdf(output_path, result.redacted_lines)
+    _write_output(output_path, result.redacted_lines, args.output_format)
     if args.also_write_txt:
         txt_path = Path(args.also_write_txt)
         txt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -61,7 +62,7 @@ def main() -> int:
     )
     write_audit_log(log_path, result, include_raw_values=include_raw)
 
-    print(f"Sanitized PDF written: {output_path}")
+    print(f"Sanitized {args.output_format} written: {output_path}")
     print(f"Report written: {report_path}")
     if args.chatgpt_export:
         print(f"ChatGPT export created: {args.chatgpt_export}")
@@ -81,9 +82,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="anon-tool", description="Policy-compliant PDF/TXT/DOCX anonymizer.")
     sub = parser.add_subparsers(dest="command")
 
-    redact = sub.add_parser("redact", help="Anonymize input and produce sanitized PDF/report output.")
+    redact = sub.add_parser("redact", help="Anonymize input and produce sanitized output and a report.")
     redact.add_argument("--input", required=True, help="Input file path (.pdf, .txt, or .docx).")
-    redact.add_argument("--output", required=True, help="Output sanitized PDF path.")
+    redact.add_argument("--output", required=True, help="Output sanitized file path.")
+    redact.add_argument(
+        "--output-format",
+        choices=["markdown", "text", "pdf"],
+        default="markdown",
+        help="Sanitized output format (default: markdown).",
+    )
     redact.add_argument("--report", required=True, help="Output JSON report path.")
     redact.add_argument("--log-file", default=None, help="Detailed audit log path.")
     redact.add_argument("--log-raw-values", default="false", help="true|false, default false.")
@@ -136,6 +143,25 @@ def _to_plain_text(lines: list[InputLine]) -> str:
             out.append(f"=== Source Page {line.page} ===")
         out.append(line.text)
     return "\n".join(out) + "\n"
+
+
+def _to_markdown(lines: list[InputLine]) -> str:
+    return render_markdown(lines)
+
+
+def _write_output(path: Path, lines: list[InputLine], output_format: str) -> None:
+    if output_format == "pdf":
+        write_sanitized_pdf(path, lines)
+        return
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if output_format == "markdown":
+        path.write_text(_to_markdown(lines), encoding="utf-8")
+        return
+    if output_format == "text":
+        path.write_text(_to_plain_text(lines), encoding="utf-8")
+        return
+    raise ValueError(f"Unsupported output format: {output_format}")
 
 
 def build_chatgpt_export_text(sanitized_text: str) -> str:

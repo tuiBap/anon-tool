@@ -76,8 +76,7 @@ function Show-Help {
   Write-Host "  -Help, -h, -?         Show this help text and exit."
   Write-Host ""
   Write-Host "Outputs:"
-  Write-Host "  <stem>.sanitized.pdf"
-  Write-Host "  <stem>.sanitized.txt"
+  Write-Host "  <stem>.sanitized.md"
   Write-Host "  <stem>.redaction.log"
   Write-Host ""
   Write-Host "Examples:"
@@ -130,8 +129,7 @@ if ([string]::IsNullOrWhiteSpace($WorkDir)) {
 New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
 
 $stem = [IO.Path]::GetFileNameWithoutExtension($InputPath)
-$outPdf = Join-Path $WorkDir "$stem.sanitized.pdf"
-$outTxt = Join-Path $WorkDir "$stem.sanitized.txt"
+$outMarkdown = Join-Path $WorkDir "$stem.sanitized.md"
 $outLog = Join-Path $WorkDir "$stem.redaction.log"
 $warnThreshold = if ($FailOnWarnings) { 0 } else { 99999 }
 $chatgptArgs = @()
@@ -158,7 +156,7 @@ if ($ChatGPTExport) {
 }
 $tempReport = New-TemporaryFile
 
-foreach ($path in @($outPdf, $outTxt, $outLog)) {
+foreach ($path in @($outMarkdown, $outLog)) {
   if (-not (Test-FileWritable -Path $path)) {
     throw "Output file is locked or not writable: $path. Close any open copy of this file and run again."
   }
@@ -168,9 +166,8 @@ Write-Step "Running anonymizer CLI"
 $env:PYTHONPATH = "src"
 $cliOutput = & python -m anon_tool.cli redact `
   --input $InputPath `
-  --output $outPdf `
+  --output $outMarkdown `
   --report $tempReport `
-  --also-write-txt $outTxt `
   --log-file $outLog `
   --warn-threshold $warnThreshold `
   @chatgptArgs 2>&1
@@ -178,7 +175,7 @@ $warnCount = Get-WarnCountFromCliOutput $cliOutput
 
 if ($LASTEXITCODE -ne 0) {
   if ($LASTEXITCODE -eq 1) {
-    $lockedPaths = @($outPdf, $outTxt, $outLog) | Where-Object { -not (Test-FileWritable -Path $_) }
+    $lockedPaths = @($outMarkdown, $outLog) | Where-Object { -not (Test-FileWritable -Path $_) }
     if ($lockedPaths.Count -gt 0) {
       throw "One or more output files are locked. Close them and run again: $($lockedPaths -join ', ')"
     }
@@ -186,14 +183,14 @@ if ($LASTEXITCODE -ne 0) {
   throw "CLI exited with code $LASTEXITCODE"
 }
 
-foreach ($path in @($outPdf, $outTxt, $outLog)) {
+foreach ($path in @($outMarkdown, $outLog)) {
   if (-not (Test-Path -LiteralPath $path)) {
     throw "Expected output missing: $path"
   }
 }
 
-Write-Step "Running leak checks on sanitized text"
-$txt = Get-Content -LiteralPath $outTxt -Raw -Encoding UTF8
+Write-Step "Running leak checks on sanitized Markdown"
+$txt = Get-Content -LiteralPath $outMarkdown -Raw -Encoding UTF8
 $emailRegex = [regex]'\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b'
 $phoneRegex = [regex]'(?:(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]\d{4}\b'
 $cardRegex = [regex]'\b(?:\d[ -]*?){13,19}\b'
@@ -207,8 +204,7 @@ Write-Host ""
 Write-Host "Validation Summary"
 Write-Host "------------------"
 Write-Host "Input:          $InputPath"
-Write-Host "Sanitized PDF:  $outPdf"
-Write-Host "Sanitized TXT:  $outTxt"
+Write-Host "Sanitized MD:   $outMarkdown"
 Write-Host "Audit Log:      $outLog"
 if ($warnCount -ge 0) {
   $status = if ($warnCount -eq 0) { "success" } else { "success_with_warnings" }
