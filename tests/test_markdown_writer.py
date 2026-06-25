@@ -61,6 +61,22 @@ def test_renders_email_thread_with_metadata_and_body() -> None:
     assert "**Body**\n\nThe issue still occurs on version 24.2.1." in markdown
 
 
+def test_escapes_raw_markdown_markers_in_email_body() -> None:
+    markdown = render_markdown(
+        _lines(
+            "From: [REDACTED_PERSON] <[REDACTED_EMAIL]>",
+            "To: Support <[REDACTED_EMAIL]>",
+            "Subject: Re: Case 00012345 startup failure",
+            "Thanks,",
+            "--",
+            "[REDACTED_PERSON]",
+        )
+    )
+
+    assert "\\--" in markdown
+    validate_markdown(markdown)
+
+
 def test_removes_repeated_boundary_headers_but_keeps_case_numbers_and_placeholders() -> None:
     lines = [
         *_lines("Support Portal", "Case Number: 00012345", "[REDACTED_COMPANY]", page=1),

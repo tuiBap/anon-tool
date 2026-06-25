@@ -270,7 +270,7 @@ def _render_email(records: list[_Record], index: int, email_count: int) -> tuple
         blocks.append("\n".join(metadata))
     if body:
         blocks.append("**Body**")
-        blocks.append("\n".join(body))
+        blocks.append("\n".join(_escape_block_start(line) for line in body))
     return blocks, index
 
 

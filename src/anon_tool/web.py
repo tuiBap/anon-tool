@@ -188,12 +188,21 @@ def build_app() -> gr.Blocks:
                     gr.Markdown("## Saved Outputs")
                     gr.Markdown("Latest saved redacted outputs, sorted newest first.")
                     saved_picker = gr.CheckboxGroup(
-                        label="Select saved files to download",
+                        label="Select saved files",
                         choices=_saved_selection_choices(initial_saved_outputs),
                         interactive=True,
                         elem_classes=["saved-picker"],
                     )
                     with gr.Row(elem_classes=["saved-actions"]):
+                        select_all_saved_button = gr.Button(
+                            "Select all",
+                            elem_classes=["nav-button"],
+                        )
+                        delete_saved_button = gr.Button(
+                            "Delete selected",
+                            variant="stop",
+                            elem_classes=["delete-button"],
+                        )
                         prepare_separate_button = gr.Button(
                             "Prepare separate files",
                             elem_classes=["nav-button"],
@@ -266,6 +275,16 @@ def build_app() -> gr.Blocks:
         saved_nav.click(
             fn=refresh_saved_outputs,
             inputs=[saved_state],
+            outputs=[saved_state, saved_picker, saved_table, saved_downloads, combined_download_file, saved_status],
+        )
+        select_all_saved_button.click(
+            fn=select_all_saved_outputs,
+            inputs=[saved_state],
+            outputs=[saved_picker, saved_status],
+        )
+        delete_saved_button.click(
+            fn=delete_saved_outputs,
+            inputs=[saved_picker, saved_state],
             outputs=[saved_state, saved_picker, saved_table, saved_downloads, combined_download_file, saved_status],
         )
         prepare_separate_button.click(
@@ -789,6 +808,81 @@ def refresh_saved_outputs(
     )
 
 
+def select_all_saved_outputs(
+    saved_outputs: list[dict[str, Any]] | None,
+) -> tuple[Any, str]:
+    choices = _saved_selection_choices(saved_outputs or [])
+    selected_paths = [path for _, path in choices]
+    if not selected_paths:
+        return gr.update(choices=choices, value=[]), "No saved output files are available."
+    return (
+        gr.update(choices=choices, value=selected_paths),
+        f"Selected all {len(selected_paths)} saved output file(s).",
+    )
+
+
+def delete_saved_outputs(
+    selected_paths: list[str] | None,
+    saved_outputs: list[dict[str, Any]] | None,
+) -> tuple[list[dict[str, Any]], Any, list[list[Any]], Any, Any, str]:
+    requested_paths = list(dict.fromkeys(selected_paths or []))
+    if not requested_paths:
+        refreshed = _merge_saved_outputs(saved_outputs or [])
+        return (
+            refreshed,
+            gr.update(choices=_saved_selection_choices(refreshed), value=[]),
+            _saved_rows(refreshed, limit=25),
+            None,
+            None,
+            "Select one or more saved files to delete.",
+        )
+
+    deleted = 0
+    failed = 0
+    skipped = 0
+    for raw_path in requested_paths:
+        path = _deletable_saved_path(raw_path)
+        if path is None:
+            skipped += 1
+            continue
+        try:
+            path.unlink()
+            deleted += 1
+        except OSError:
+            failed += 1
+
+    refreshed = _merge_saved_outputs(saved_outputs or [])
+    status = f"Deleted {deleted} saved output file(s)."
+    if failed:
+        status += f" Could not delete {failed} locked or inaccessible file(s)."
+    if skipped:
+        status += f" Ignored {skipped} invalid or unavailable selection(s)."
+    return (
+        refreshed,
+        gr.update(choices=_saved_selection_choices(refreshed), value=[]),
+        _saved_rows(refreshed, limit=25),
+        None,
+        None,
+        status,
+    )
+
+
+def _deletable_saved_path(path: str) -> Path | None:
+    if not path:
+        return None
+    try:
+        output_root = SAVED_OUTPUT_DIR.resolve()
+        candidate = Path(path).resolve()
+        candidate.relative_to(output_root)
+        if not candidate.is_file():
+            return None
+        if not re.search(r"\.anonymized\.(?:md|txt|pdf)$", candidate.name, flags=re.IGNORECASE):
+            return None
+        return candidate
+    except (OSError, ValueError):
+        return None
+
+
 def _merge_saved_outputs(saved_outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_path = {str(item.get("path", "")): item for item in _load_saved_outputs()}
     by_path.update({str(item.get("path", "")): item for item in saved_outputs if item.get("path")})
@@ -1204,6 +1298,19 @@ def _css() -> str:
     .saved-actions {
       align-items: end;
       gap: 12px !important;
+    }
+
+    .delete-button button {
+      min-height: 44px !important;
+      border-radius: 7px !important;
+      border: 1px solid rgba(248, 113, 113, 0.7) !important;
+      background: rgba(127, 29, 29, 0.72) !important;
+      color: #fee2e2 !important;
+      font-weight: 700 !important;
+    }
+
+    .delete-button button:hover {
+      background: rgba(153, 27, 27, 0.9) !important;
     }
 
     .saved-picker {

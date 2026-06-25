@@ -12,9 +12,11 @@ from anon_tool.web import (
     _load_sources,
     _cleanup_stale_outputs,
     _load_web_settings,
+    delete_saved_outputs,
     refresh_saved_outputs,
     run_anonymization,
     save_web_settings,
+    select_all_saved_outputs,
     _write_web_settings,
     _write_download,
     _saved_rows,
@@ -84,6 +86,47 @@ def test_web_ui_saved_rows_are_newest_first_and_limited(tmp_path) -> None:
     assert len(rows) == 25
     assert rows[0][1] == "29"
     assert rows[-1][1] == "5"
+
+
+def test_web_ui_select_all_selects_every_displayed_saved_output(tmp_path) -> None:
+    records = []
+    for index in range(30):
+        path = tmp_path / f"{index}.anonymized.txt"
+        path.write_text(str(index), encoding="utf-8")
+        records.append({"time": f"2026-05-20T00:{index:02d}:00+00:00", "source": str(index), "path": str(path)})
+
+    picker_update, status = select_all_saved_outputs(records)
+
+    assert len(picker_update["choices"]) == 25
+    assert len(picker_update["value"]) == 25
+    assert picker_update["value"][0].endswith("29.anonymized.txt")
+    assert "Selected all 25" in status
+
+
+def test_web_ui_deletes_only_selected_outputs_inside_saved_output_dir(tmp_path, monkeypatch) -> None:
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    selected = output_dir / "selected.anonymized.txt"
+    retained = output_dir / "retained.anonymized.md"
+    outside = tmp_path / "outside.anonymized.txt"
+    for path in (selected, retained, outside):
+        path.write_text(path.name, encoding="utf-8")
+    monkeypatch.setattr("anon_tool.web.SAVED_OUTPUT_DIR", output_dir)
+    records = [
+        {"time": "2026-05-20T11:00:00+00:00", "source": "selected", "path": str(selected)},
+        {"time": "2026-05-20T10:00:00+00:00", "source": "retained", "path": str(retained)},
+    ]
+
+    result = delete_saved_outputs([str(selected), str(outside)], records)
+
+    assert not selected.exists()
+    assert retained.exists()
+    assert outside.exists()
+    assert [item["path"] for item in result[0]] == [str(retained)]
+    assert result[1]["value"] == []
+    assert result[2][0][1] == "retained"
+    assert "Deleted 1 saved output file(s)." in result[5]
+    assert "Ignored 1 invalid or unavailable selection(s)." in result[5]
 
 
 def test_web_ui_combines_selected_saved_outputs(tmp_path, monkeypatch) -> None:
