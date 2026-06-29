@@ -106,3 +106,17 @@ def test_escapes_raw_markdown_markers_in_extracted_prose() -> None:
     assert "\\+not a list" in markdown
     assert "\\*not a list" in markdown
     validate_markdown(markdown)
+
+
+def test_escapes_raw_heading_markers_in_extracted_prose() -> None:
+    markdown = render_markdown(
+        _lines(
+            "# Please confirm the installation directory",
+            "## Directory inventory",
+        )
+    )
+
+    assert "\\# Please confirm the installation directory" in markdown
+    assert "\\## Directory inventory" in markdown
+    assert markdown.count("# Sanitized Case Record") == 1
+    validate_markdown(markdown)

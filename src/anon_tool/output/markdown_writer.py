@@ -345,7 +345,7 @@ def _escape_inline(text: str) -> str:
 
 
 def _escape_block_start(text: str) -> str:
-    return re.sub(r"^([*+-])(?=\S)", r"\\\1", text)
+    return re.sub(r"^(#{1,6}\s+\S|[*+-](?=\S))", r"\\\1", text)
 
 
 def _escape_table(text: str) -> str:
