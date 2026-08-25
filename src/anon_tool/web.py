@@ -6,6 +6,7 @@ import re
 import time
 from dataclasses import asdict
 from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -121,6 +122,7 @@ def build_app() -> gr.Blocks:
                                 interactive=True,
                             )
                             anonymize_button = gr.Button("Anonymize", variant="primary", elem_classes=["run-button"])
+                            clear_button = gr.Button("Clear input", elem_classes=["clear-button"])
                             status_line = gr.Markdown("Sensitive fields will be detected and redacted.")
 
                     stats = gr.HTML(_empty_stats(output_format=str(settings["default_output_format"])))
@@ -334,6 +336,22 @@ def build_app() -> gr.Blocks:
                 saved_status,
             ],
         )
+        clear_button.click(
+            fn=clear_dashboard_inputs,
+            inputs=[output_format],
+            outputs=[
+                file_input,
+                text_input,
+                original_output,
+                redacted_output,
+                stats,
+                details_json,
+                details_table,
+                warnings_table,
+                download_file,
+                status_line,
+            ],
+        )
 
     return app
 
@@ -461,6 +479,21 @@ def run_anonymization(
             None,
             "Select one or more saved files.",
         )
+
+
+def clear_dashboard_inputs(output_format: str) -> tuple[Any, str, str, str, str, str, list[list[str]], list[list[str]], Any, str]:
+    return (
+        None,
+        "",
+        "",
+        "",
+        _empty_stats(output_format=output_format),
+        "",
+        [],
+        [],
+        gr.update(value=None, interactive=False),
+        "Sensitive fields will be detected and redacted.",
+    )
 
 
 def _load_sources(uploaded_file: Any, pasted_text: str | None) -> list[tuple[list[InputLine], str]]:
@@ -1023,9 +1056,21 @@ def _sidebar_header() -> str:
 
 
 def _sidebar_footer() -> str:
+    tool_version = _tool_version()
     return """
-    <div class="nav-footer"><strong>Anon Tool v1.0.0</strong><br><span>Local processing - Secure</span></div>
-    """
+    <div class="nav-footer"><strong>Anon Tool v{tool_version}</strong><br><span>Local processing - Secure</span></div>
+    """.format(tool_version=tool_version)
+
+
+def _tool_version() -> str:
+    try:
+        return version("anon-tool")
+    except PackageNotFoundError:
+        pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        if not pyproject.exists():
+            return "unknown"
+        match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject.read_text(encoding="utf-8"))
+        return match.group(1) if match else "unknown"
 
 
 def _css() -> str:
@@ -1198,6 +1243,21 @@ def _css() -> str:
       border-radius: 7px !important;
       min-height: 58px !important;
       box-shadow: 0 10px 24px rgba(31, 122, 77, 0.22);
+    }
+
+    .clear-button button {
+      min-height: 44px !important;
+      border-radius: 7px !important;
+      border: 1px solid var(--border) !important;
+      background: rgba(18, 31, 25, 0.95) !important;
+      color: var(--text) !important;
+      font-weight: 700 !important;
+      box-shadow: none !important;
+    }
+
+    .clear-button button:hover {
+      border-color: rgba(143, 214, 163, 0.45) !important;
+      background: rgba(24, 45, 36, 0.98) !important;
     }
 
     .stats-grid {

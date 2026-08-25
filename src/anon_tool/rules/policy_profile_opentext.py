@@ -58,10 +58,38 @@ def default_profile() -> ProfileConfig:
             r"\b\d{1,6}\s+[A-Z0-9][A-Z0-9\s.-]{2,40}\s(?:AVE|AVENUE|ST|STREET|BLVD|BOULEVARD|RD|ROAD|DR|DRIVE|LN|LANE|CT|COURT|WAY)\b",
             confidence="medium",
         ),
-        _compile("payment.card", "pci_data", "[REDACTED_PCI]", r"\b(?:\d[ -]*?){13,19}\b", confidence="medium"),
+        _compile("payment.card", "pci_data", "[REDACTED_PCI]", r"\b(?:\d[ -]*?){13,19}\b"),
         _compile("cvv", "pci_data", "[REDACTED_PCI]", r"\bCVV[:\s-]*\d{3,4}\b", confidence="high"),
         _compile("ssn.us", "pii", "[REDACTED_PII]", r"\b\d{3}-\d{2}-\d{4}\b"),
-        _compile("gov.id", "pii", "[REDACTED_PII]", r"\b(?:employee|emp|staff|user)\s*(?:id|#|number)[:\s-]*[A-Z0-9-]{4,}\b"),
+        _compile(
+            "pii.date_of_birth",
+            "pii",
+            "[REDACTED_PII]",
+            r"\b(?:DOB|Date\s+of\s+Birth|Birth\s+Date)\s*[:=]?\s*"
+            r"(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|[A-Z][a-z]{2,9}\s+\d{1,2},?\s+\d{4})\b",
+        ),
+        _compile(
+            "gov.id",
+            "pii",
+            "[REDACTED_PII]",
+            r"\b(?:(?:employee|emp|staff|user)\s*(?:id|#|number)|"
+            r"(?:national|government|tax|tin|passport|driver'?s?\s+license|dl)\s*(?:id|#|number|no\.?)?)"
+            r"[:\s-]*[A-Z0-9-]{4,}\b",
+        ),
+        _compile(
+            "phi.medical_record",
+            "phi_data",
+            "[REDACTED_PHI]",
+            r"\b(?:patient|medical\s+record|mrn|diagnosis|health\s+plan|insurance|member)\s*"
+            r"(?:id|#|number|no\.?|details?)?[:\s-]*[A-Z0-9-]{4,}\b",
+        ),
+        _compile(
+            "financial.nonpublic",
+            "financial_data",
+            "[REDACTED_FINANCIAL]",
+            r"\b(?:financial\s+results?|financial\s+forecasts?|revenue\s+forecasts?|forecasted\s+revenue|"
+            r"margin\s+forecasts?|bookings\s+forecasts?|ARR\s+forecasts?)\b[^\n]{0,80}",
+        ),
         _compile("case.reference", "account_id", "[REDACTED_ACCOUNT_ID]", r"\b(?:INC|CASE|SR)[-:\s]*\d{4,}\b"),
         _compile(
             "contract.reference",
@@ -96,16 +124,29 @@ def default_profile() -> ProfileConfig:
         "secret",
         "contact information",
         "mailing address",
+        "customer or prospect data",
+        "customer data",
+        "prospect data",
+        "personal data",
         "payment card",
         "pci",
         "phi",
+        "protected health information",
         "health information",
         "biometric",
+        "genetic data",
         "sexual orientation",
+        "racial or ethnic origin",
+        "political opinions",
+        "religious or philosophical beliefs",
+        "trade union membership",
+        "sex life",
         "government",
         "dod",
         "legal",
+        "financial results",
         "financial forecast",
+        "financial forecasts",
         "source code",
         "named support engineer",
     ]
@@ -117,6 +158,14 @@ def default_profile() -> ProfileConfig:
         "restricted",
         "classified",
         "regulated",
+        "data classification",
+        "document owner",
+        "third party has expressly restricted",
+        "restricted the use or processing",
+        "no ai processing",
+        "do not process through ai",
+        "unapproved ai",
+        "public ai",
     ]
 
     preserve_keywords = [
@@ -147,7 +196,7 @@ def default_profile() -> ProfileConfig:
     ]
 
     return ProfileConfig(
-        policy_profile="opentext_gisp_ai_v1",
+        policy_profile="opentext_gisp_ai_2026_08_11",
         pattern_rules=pattern_rules,
         preserve_patterns=preserve_patterns,
         sensitive_keywords=sensitive_keywords,

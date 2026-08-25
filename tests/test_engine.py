@@ -404,3 +404,78 @@ def test_preserves_software_package_versions_that_look_like_ipv4() -> None:
     assert "ArcMC 3.3.0.0" in output
     assert "10.20.30.40" not in output
     assert "[REDACTED_IP]" in output
+
+
+def test_profile_tracks_august_2026_ai_policy() -> None:
+    assert default_profile().policy_profile == "opentext_gisp_ai_2026_08_11"
+
+
+def test_redacts_new_customer_and_prospect_labels() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="Prospect Name: Example Health Ltd"),
+        InputLine(page=1, line_no=2, text="End Customer: Acme Manufacturing"),
+        InputLine(page=1, line_no=3, text="Tenant: customer-prod-01"),
+    ]
+    result = redact_lines(lines, default_profile())
+    output = "\n".join(line.text for line in result.redacted_lines)
+    assert "Example Health" not in output
+    assert "Acme Manufacturing" not in output
+    assert "customer-prod-01" not in output
+    assert output.count("[REDACTED_COMPANY]") == 3
+
+
+def test_redacts_phi_and_sensitive_personal_data_labels() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="Medical Record Number: MRN-123456"),
+        InputLine(page=1, line_no=2, text="Diagnosis: DX-998877"),
+        InputLine(page=1, line_no=3, text="Date of Birth: 04/15/1981"),
+        InputLine(page=1, line_no=4, text="Passport Number: X1234567"),
+    ]
+    result = redact_lines(lines, default_profile())
+    output = "\n".join(line.text for line in result.redacted_lines)
+    assert "MRN-123456" not in output
+    assert "DX-998877" not in output
+    assert "04/15/1981" not in output
+    assert "X1234567" not in output
+    assert "[REDACTED_PHI]" in output
+    assert "[REDACTED_PII]" in output
+
+
+def test_redacts_financial_results_and_forecasts() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="Financial forecast: Q4 revenue will be 42M."),
+        InputLine(page=1, line_no=2, text="Bookings forecast for EMEA is not public."),
+    ]
+    result = redact_lines(lines, default_profile())
+    output = "\n".join(line.text for line in result.redacted_lines)
+    assert "42M" not in output
+    assert "EMEA" not in output
+    assert output.count("[REDACTED_FINANCIAL]") == 2
+
+
+def test_policy_restriction_context_warns_without_blocking_redaction() -> None:
+    lines = [
+        InputLine(
+            page=1,
+            line_no=1,
+            text="Document owner restriction: do not process through AI systems.",
+        )
+    ]
+    result = redact_lines(lines, default_profile())
+    assert result.redacted_lines[0].text == "[REDACTED_SENSITIVE_CONTEXT]"
+    assert any(w.rule_id == "policy.ai_restriction" for w in result.warnings)
+
+
+def test_card_detection_requires_luhn_validation() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="PCI card: 4111 1111 1111 1111"),
+        InputLine(page=1, line_no=2, text="Support reference: 1234 5678 9012 3456"),
+        InputLine(page=1, line_no=3, text="UNITED KINGDOM +44 20 3695 6800"),
+    ]
+    result = redact_lines(lines, default_profile())
+    output = "\n".join(line.text for line in result.redacted_lines)
+    assert "4111 1111 1111 1111" not in output
+    assert "[REDACTED_PCI]" in output
+    assert "1234 5678 9012 3456" in output
+    assert "+44 20 3695 6800" in output
+    assert not any("card_like" in item for item in result.residual_risk_checks)

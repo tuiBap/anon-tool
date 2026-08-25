@@ -28,11 +28,15 @@ def redact_lines(lines: list[InputLine], profile: ProfileConfig) -> RedactionRes
         line_spans.extend(_detect_context_names(line, profile))
         line_spans.extend(_detect_customer_company_context(line, profile))
         line_spans.extend(_detect_company_legal_names(line))
-        line_spans.extend(_detect_keyword_redactions(line, profile))
-        spans.extend(_dedupe_and_sort_spans(line_spans))
+        line_spans.extend(_detect_keyword_redactions(line, profile, line_spans))
+        line_spans = _dedupe_and_sort_spans(line_spans)
+        spans.extend(line_spans)
         warning = _detect_uncertain_line(line, profile, line_spans)
         if warning:
             warnings.append(warning)
+        policy_warning = _detect_policy_context_warning(line)
+        if policy_warning:
+            warnings.append(policy_warning)
 
     grouped: dict[tuple[int, int], list[DetectedSpan]] = defaultdict(list)
     for span in spans:
@@ -89,6 +93,8 @@ def _detect_pattern_spans(line: InputLine, profile: ProfileConfig) -> list[Detec
     preserve_spans = _collect_preserve_spans(line.text, profile)
     for rule in profile.pattern_rules:
         for match in rule.regex.finditer(line.text):
+            if rule.rule_id == "payment.card" and not _is_likely_payment_card(match.group(0)):
+                continue
             if _overlaps_preserve(match.start(), match.end(), preserve_spans):
                 continue
             spans.append(
@@ -241,7 +247,7 @@ def _detect_labeled_pii_context(line: InputLine, profile: ProfileConfig) -> list
         (
             "context.contact_name",
             "person_name",
-            r"(?:\b(?:Contact Name|Full Name|Display Name)\s+|^Name\s+)(?P<value>[A-Z][A-Z'-]+(?:\s+[A-Z][A-Z'-]+){1,3}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b(?=\s+(?:Account Name|Company|Customer|Email|Phone|Reference|Contact Region)\b|[,;]|$)",
+            r"(?:\b(?:Contact Name|Full Name|Display Name|Prospect Name|Client Name)\s+|^Name\s+)(?P<value>[A-Z][A-Z'-]+(?:\s+[A-Z][A-Z'-]+){1,3}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b(?=\s+(?:Account Name|Company|Customer|Email|Phone|Reference|Contact Region)\b|[,;]|$)",
         ),
         (
             "context.contact_name",
@@ -289,6 +295,16 @@ def _detect_labeled_pii_context(line: InputLine, profile: ProfileConfig) -> list
             r"\b(?:Phone|Mobile|Cell|Business Phone|Partner Business Phone)\s*(?P<value>(?:\+?1\s*)?\d{10})(?!\d)\b",
         ),
         (
+            "context.phi",
+            "phi_data",
+            r"\b(?:Patient|Medical Record|MRN|Diagnosis|Health Plan|Insurance|Member)\s*(?:ID|#|Number|No\.?|Details?)?\s*[:=]?\s*(?P<value>[A-Z0-9][A-Z0-9 ._-]{3,})\b",
+        ),
+        (
+            "context.restricted_processing",
+            "sensitive_context",
+            r"(?P<value>.*\b(?:No AI Processing|Do Not Process Through AI|Restricted Processing|Document Owner Restriction)\b[^\n]*)",
+        ),
+        (
             "context.username",
             "account_id",
             r"\b(?:user(?:name)?|login|owner|assigned\s+to)\s*(?:is|:|=)?\s*(?P<value>[A-Z0-9_.\\-]{3,})\b",
@@ -329,6 +345,7 @@ def _is_ignored_context_value(value: str) -> bool:
         "support portal",
         "value not assigned",
         "unknown source",
+        "restriction",
     }
     ignored_parts = {
         "account",
@@ -450,31 +467,56 @@ def _normalize_context_name(value: str) -> list[tuple[int, int, str]]:
     return [(start, end, trimmed[start:end])]
 
 
-def _detect_keyword_redactions(line: InputLine, profile: ProfileConfig) -> list[DetectedSpan]:
+def _detect_keyword_redactions(
+    line: InputLine, profile: ProfileConfig, existing_spans: list[DetectedSpan]
+) -> list[DetectedSpan]:
     text_l = line.text.lower()
     if any(k in text_l for k in profile.preserve_keywords):
         return []
 
+    data_context_keywords = {
+        "customer or prospect data",
+        "customer data",
+        "prospect data",
+        "personal data",
+        "payment card",
+        "pci",
+        "phi",
+        "protected health information",
+        "health information",
+        "financial results",
+        "financial forecast",
+        "financial forecasts",
+    }
+    has_specific_data_span = any(span.category != "sensitive_context" for span in existing_spans)
+
     spans: list[DetectedSpan] = []
     for keyword in profile.sensitive_keywords:
-        if keyword in text_l:
-            m = re.search(re.escape(keyword), line.text, re.IGNORECASE)
-            if not m:
-                continue
+        if has_specific_data_span and keyword in data_context_keywords:
+            continue
+        m = _find_keyword_match(line.text, keyword)
+        if m:
             spans.append(
                 DetectedSpan(
                     page=line.page,
                     line=line.line_no,
-                    start=max(0, m.start() - 25),
-                    end=min(len(line.text), m.end() + 35),
+                    start=0,
+                    end=len(line.text),
                     category="sensitive_context",
                     confidence="medium",
                     rule_id="keyword.sensitive_context",
-                    original_text=line.text[max(0, m.start() - 25) : min(len(line.text), m.end() + 35)],
+                    original_text=line.text,
                 )
             )
             break
     return spans
+
+
+def _find_keyword_match(text: str, keyword: str) -> re.Match[str] | None:
+    escaped = re.escape(keyword).replace(r"\ ", r"\s+")
+    prefix = r"(?<![A-Z0-9])" if keyword[:1].isalnum() else ""
+    suffix = r"(?![A-Z0-9])" if keyword[-1:].isalnum() else ""
+    return re.search(prefix + escaped + suffix, text, re.IGNORECASE)
 
 
 def _detect_customer_company_context(line: InputLine, profile: ProfileConfig) -> list[DetectedSpan]:
@@ -490,6 +532,14 @@ def _detect_customer_company_context(line: InputLine, profile: ProfileConfig) ->
         "customer name",
         "company name",
         "account name",
+        "prospect name",
+        "client name",
+        "end customer",
+        "end customer name",
+        "sold to",
+        "ship to",
+        "bill to",
+        "site name",
     ]
     generic_labels = [
         "customer",
@@ -498,6 +548,8 @@ def _detect_customer_company_context(line: InputLine, profile: ProfileConfig) ->
         "org",
         "account",
         "prospect",
+        "client",
+        "tenant",
     ]
     spans: list[DetectedSpan] = []
     for label in strict_labels + generic_labels:
@@ -600,6 +652,29 @@ def _detect_uncertain_line(
     return None
 
 
+def _detect_policy_context_warning(line: InputLine) -> ProcessingWarning | None:
+    text_l = line.text.lower()
+    policy_signals = [
+        "document owner",
+        "third party has expressly restricted",
+        "restricted the use or processing",
+        "no ai processing",
+        "do not process through ai",
+        "must not be processed through any ai",
+        "public or unapproved ai",
+        "unapproved ai systems",
+        "data classification",
+    ]
+    processor_signal = "data processor" in text_l and any(term in text_l for term in ("pd", "pci", "phi", "customer"))
+    if any(signal in text_l for signal in policy_signals) or processor_signal:
+        return ProcessingWarning(
+            location=f"p{line.page}:l{line.line_no}",
+            message="Line contains AI policy restriction context; anonymization may not make external AI processing permitted.",
+            rule_id="policy.ai_restriction",
+        )
+    return None
+
+
 def _dedupe_and_sort_spans(spans: list[DetectedSpan]) -> list[DetectedSpan]:
     seen: set[tuple[int, int, int, int, str]] = set()
     unique: list[DetectedSpan] = []
@@ -645,6 +720,8 @@ def _placeholder_for_category(category: str) -> str:
         "ip_address": "[REDACTED_IP]",
         "address": "[REDACTED_ADDRESS]",
         "pci_data": "[REDACTED_PCI]",
+        "phi_data": "[REDACTED_PHI]",
+        "financial_data": "[REDACTED_FINANCIAL]",
         "pii": "[REDACTED_PII]",
         "account_id": "[REDACTED_ACCOUNT_ID]",
         "customer_id": "[REDACTED_CUSTOMER_REF]",
@@ -720,11 +797,33 @@ def _residual_scan(lines: list[InputLine]) -> list[str]:
     for line in lines:
         for label, pattern in checks:
             for match in pattern.finditer(line.text):
+                if label == "card_like" and not _is_likely_payment_card(match.group(0)):
+                    continue
                 if _residual_match_is_ignored(line.text, match):
                     continue
                 findings.append(f"{label} match remains at p{line.page}:l{line.line_no}")
                 break
     return findings
+
+
+def _is_likely_payment_card(value: str) -> bool:
+    digits = re.sub(r"\D", "", value)
+    if not 13 <= len(digits) <= 19:
+        return False
+    if len(set(digits)) == 1:
+        return False
+
+    total = 0
+    double = False
+    for char in reversed(digits):
+        number = int(char)
+        if double:
+            number *= 2
+            if number > 9:
+                number -= 9
+        total += number
+        double = not double
+    return total % 10 == 0
 
 
 def _residual_match_is_ignored(text: str, match: re.Match[str]) -> bool:

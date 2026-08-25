@@ -12,6 +12,9 @@ from anon_tool.web import (
     _load_sources,
     _cleanup_stale_outputs,
     _load_web_settings,
+    _sidebar_footer,
+    _tool_version,
+    clear_dashboard_inputs,
     delete_saved_outputs,
     refresh_saved_outputs,
     run_anonymization,
@@ -44,6 +47,13 @@ def test_web_ui_accepts_auth_for_non_loopback_bind() -> None:
 def test_web_ui_rejects_partial_auth() -> None:
     with pytest.raises(ValueError, match="Provide both"):
         _resolve_auth("127.0.0.1", "user", None)
+
+
+def test_sidebar_footer_uses_current_tool_version() -> None:
+    footer = _sidebar_footer()
+
+    assert f"Anon Tool v{_tool_version()}" in footer
+    assert "Anon Tool v1.0.0" not in footer
 
 
 def test_web_ui_loads_multiple_uploaded_sources(tmp_path) -> None:
@@ -176,6 +186,22 @@ def test_dashboard_disables_direct_download_when_anonymization_fails(tmp_path, m
 
     assert download_update["interactive"] is False
     assert download_update["value"] is None
+
+
+def test_dashboard_clear_inputs_resets_current_run_view() -> None:
+    result = clear_dashboard_inputs("Markdown")
+
+    assert result[0] is None
+    assert result[1] == ""
+    assert result[2] == ""
+    assert result[3] == ""
+    assert "0 redactions" in result[4]
+    assert result[5] == ""
+    assert result[6] == []
+    assert result[7] == []
+    assert result[8]["interactive"] is False
+    assert result[8]["value"] is None
+    assert result[9] == "Sensitive fields will be detected and redacted."
 
 
 def test_web_settings_default_to_markdown_and_30_day_retention(tmp_path, monkeypatch) -> None:
