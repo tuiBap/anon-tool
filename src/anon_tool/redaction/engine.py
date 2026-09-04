@@ -8,6 +8,80 @@ from anon_tool.rules.policy_profile_opentext import ProfileConfig
 from anon_tool.types import DetectedSpan, InputLine, ProcessingWarning, RedactionDecision
 
 
+_PERSON_NAME_WORD = r"[A-Z][a-z]+(?:[-'][A-Z]?[a-z]+)*"
+_FIRST_LAST_PERSON_NAME = rf"{_PERSON_NAME_WORD}(?:\s+{_PERSON_NAME_WORD}){{1,3}}"
+_LAST_FIRST_PERSON_NAME = rf"{_PERSON_NAME_WORD},\s*{_PERSON_NAME_WORD}(?:\s+{_PERSON_NAME_WORD}){{0,2}}"
+_EMAIL_PARTICIPANT_HEADER = re.compile(
+    r"^\s*(?:[-*]\s*)?\*{0,2}(?:To|From|Cc|Bcc)\s*:\*{0,2}\s*",
+    re.IGNORECASE,
+)
+_EMAIL_PARTICIPANT_NAME_PATTERNS = (
+    re.compile(rf"(?P<name>{_LAST_FIRST_PERSON_NAME})"),
+    re.compile(rf"(?P<name>{_FIRST_LAST_PERSON_NAME})"),
+)
+_STANDALONE_PERSON_NAME_PATTERNS = (
+    re.compile(
+        rf"^\s*(?P<name>{_LAST_FIRST_PERSON_NAME})"
+        r"(?:\s+\([^)]{1,60}\))?\s*(?:<[^>]+>)?\s*;?\s*$"
+    ),
+    re.compile(
+        rf"^\s*(?P<name>{_FIRST_LAST_PERSON_NAME})"
+        r"(?:\s+\([^)]{1,60}\))?\s*(?:<[^>]+>)?\s*;?\s*$"
+    ),
+)
+_PERSON_NAME_BLOCKED_TERMS = {
+    "account",
+    "activity",
+    "advisor",
+    "application",
+    "architect",
+    "connection",
+    "console",
+    "customer",
+    "cyber",
+    "cybersecurity",
+    "database",
+    "demo",
+    "edition",
+    "enterprise",
+    "error",
+    "exception",
+    "folder",
+    "government",
+    "hand",
+    "hub",
+    "hi",
+    "information",
+    "installing",
+    "license",
+    "licensing",
+    "logger",
+    "logs",
+    "manager",
+    "message",
+    "notes",
+    "operations",
+    "over",
+    "principal",
+    "product",
+    "sales",
+    "security",
+    "server",
+    "service",
+    "services",
+    "solution",
+    "source",
+    "standard",
+    "summary",
+    "support",
+    "system",
+    "technical",
+    "unknown",
+    "warning",
+    "created",
+}
+
+
 @dataclass
 class RedactionResult:
     redacted_lines: list[InputLine]
@@ -26,6 +100,8 @@ def redact_lines(lines: list[InputLine], profile: ProfileConfig) -> RedactionRes
         line_spans = _detect_pattern_spans(line, profile)
         line_spans.extend(_detect_labeled_pii_context(line, profile))
         line_spans.extend(_detect_context_names(line, profile))
+        line_spans.extend(_detect_email_participant_names(line))
+        line_spans.extend(_detect_standalone_person_name(line))
         line_spans.extend(_detect_customer_company_context(line, profile))
         line_spans.extend(_detect_company_legal_names(line))
         line_spans.extend(_detect_keyword_redactions(line, profile, line_spans))
@@ -200,26 +276,13 @@ def _overlaps_preserve(start: int, end: int, preserves: list[tuple[int, int]]) -
 
 def _detect_context_names(line: InputLine, profile: ProfileConfig) -> list[DetectedSpan]:
     spans: list[DetectedSpan] = []
-    blocked_name_terms = {
-        "error",
-        "warning",
-        "exception",
-        "database",
-        "connection",
-        "service",
-        "server",
-        "console",
-        "manager",
-        "system",
-        "support",
-    }
     for pattern in profile.name_context_patterns:
         for match in pattern.finditer(line.text):
             value = match.group("name")
             for start_offset, end_offset, normalized in _normalize_context_name(value):
                 if normalized.lower() in {"task manager", "operating system"}:
                     continue
-                if any(part.lower() in blocked_name_terms for part in normalized.split()):
+                if not _person_name_candidate_is_safe(normalized):
                     continue
                 start = match.start("name") + start_offset
                 end = match.start("name") + end_offset
@@ -238,12 +301,101 @@ def _detect_context_names(line: InputLine, profile: ProfileConfig) -> list[Detec
     return spans
 
 
+def _detect_email_participant_names(line: InputLine) -> list[DetectedSpan]:
+    text = line.text
+    stripped = text.strip()
+    is_header = bool(_EMAIL_PARTICIPANT_HEADER.match(text))
+    has_angle_email = bool(
+        re.search(r"<\s*(?:\[REDACTED_EMAIL\]|[A-Z0-9._%+-]+@[A-Z0-9.-]+)", text, re.IGNORECASE)
+    )
+    is_recipient_list = ";" in text and len(stripped) <= 500
+    if not (is_header or has_angle_email or is_recipient_list):
+        return []
+
+    spans: list[DetectedSpan] = []
+    for pattern in _EMAIL_PARTICIPANT_NAME_PATTERNS:
+        for match in pattern.finditer(text):
+            value = match.group("name")
+            start, end = match.span("name")
+            if not _person_name_candidate_is_safe(value):
+                continue
+            if not _has_email_participant_boundaries(text, start, end, is_header):
+                continue
+            spans.append(
+                DetectedSpan(
+                    page=line.page,
+                    line=line.line_no,
+                    start=start,
+                    end=end,
+                    category="person_name",
+                    confidence="high",
+                    rule_id="context.email_participant_name",
+                    original_text=value,
+                )
+            )
+    return spans
+
+
+def _has_email_participant_boundaries(text: str, start: int, end: int, is_header: bool) -> bool:
+    before = text[:start].rstrip()
+    after = text[end:].lstrip()
+    header_end = _EMAIL_PARTICIPANT_HEADER.match(text).end() if is_header else -1
+    before_ok = (
+        not before
+        or start == header_end
+        or before.endswith((":", ";", "**"))
+    )
+    after_ok = not after or after.startswith(("<", "(", ";"))
+    return before_ok and after_ok
+
+
+def _detect_standalone_person_name(line: InputLine) -> list[DetectedSpan]:
+    for pattern in _STANDALONE_PERSON_NAME_PATTERNS:
+        match = pattern.match(line.text)
+        if not match:
+            continue
+        value = match.group("name")
+        if not _person_name_candidate_is_safe(value):
+            return []
+        start, end = match.span("name")
+        return [
+            DetectedSpan(
+                page=line.page,
+                line=line.line_no,
+                start=start,
+                end=end,
+                category="person_name",
+                confidence="high",
+                rule_id="context.standalone_person_name",
+                original_text=value,
+            )
+        ]
+    return []
+
+
+def _person_name_candidate_is_safe(value: str) -> bool:
+    parts = re.findall(r"[A-Za-z]+", value)
+    return len(parts) >= 2 and not any(
+        part.lower() in _PERSON_NAME_BLOCKED_TERMS for part in parts
+    )
+
+
 def _detect_labeled_pii_context(line: InputLine, profile: ProfileConfig) -> list[DetectedSpan]:
     text = line.text
     preserve_spans = _collect_preserve_spans(text, profile)
     spans: list[DetectedSpan] = []
 
     label_patterns: list[tuple[str, str, str]] = [
+        (
+            "context.person_name_field",
+            "person_name",
+            rf"\b(?:First Name|Given Name|Last Name|Surname|Family Name)\s*[:=]\s*(?P<value>(?-i:{_PERSON_NAME_WORD}))\b",
+        ),
+        (
+            "context.person_name_field",
+            "person_name",
+            rf"\b(?:FirstName|LastName)\s*(?::|=)?\s*(?P<value>(?-i:{_PERSON_NAME_WORD}))\b",
+        ),
         (
             "context.contact_name",
             "person_name",
@@ -273,6 +425,11 @@ def _detect_labeled_pii_context(line: InputLine, profile: ProfileConfig) -> list
             "context.signature_name",
             "person_name",
             r"\b(?:Regards|Best Regards|Thanks|Thank you),?\s*(?P<value>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b",
+        ),
+        (
+            "context.contact_person",
+            "person_name",
+            rf"\bcontact\s+(?:my\s+manager:\s*)?(?P<value>(?-i:{_FIRST_LAST_PERSON_NAME}))\b(?=\s*(?:\(|at\b|<|\[REDACTED_EMAIL\]))",
         ),
         (
             "context.transcript_speaker",

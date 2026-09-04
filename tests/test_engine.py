@@ -198,6 +198,101 @@ def test_redacts_uppercase_name_in_email_headers() -> None:
     assert "[REDACTED_EMAIL]" in out
 
 
+def test_redacts_markdown_email_recipient_lists_and_last_first_names() -> None:
+    lines = [
+        InputLine(
+            page=1,
+            line_no=1,
+            text=(
+                "- **To:** Ehret, Phillip (SSC/SPC) <phillip.ehret@example.com>; "
+                "Laurie Odelius <laurie.odelius@example.com>; "
+                "Lauzon-Bray, Maxime (SSC/SPC) <maxime.lauzon-bray@example.com>; "
+                "Emma Gilfillan <emma.gilfillan@example.com>; "
+                "David Bush <david.bush@example.com>"
+            ),
+        )
+    ]
+    result = redact_lines(lines, default_profile())
+    out = result.redacted_lines[0].text
+    for name in [
+        "Ehret, Phillip",
+        "Laurie Odelius",
+        "Lauzon-Bray, Maxime",
+        "Emma Gilfillan",
+        "David Bush",
+    ]:
+        assert name not in out
+    assert out.count("[REDACTED_PERSON]") == 5
+    assert out.count("[REDACTED_EMAIL]") == 5
+
+
+def test_redacts_standalone_recipient_signature_and_contact_names() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="Ehret, Phillip (SSC/SPC)<[REDACTED_EMAIL]>"),
+        InputLine(page=1, line_no=2, text="Keith Stover;"),
+        InputLine(page=1, line_no=3, text="Laurie Odelius;"),
+        InputLine(
+            page=1,
+            line_no=4,
+            text="Boulanger, Steve (SSC/SPC) <[REDACTED_EMAIL]>;",
+        ),
+        InputLine(page=1, line_no=5, text="Phillip Ehret"),
+        InputLine(page=1, line_no=6, text="Maxime Lauzon-Bray (He/Him/Il)"),
+        InputLine(
+            page=1,
+            line_no=7,
+            text="For urgent matters, please contact Gilbert Sabat at [REDACTED_EMAIL].",
+        ),
+        InputLine(
+            page=1,
+            line_no=8,
+            text="Please contact my manager: Dexter Alexander ([REDACTED_EMAIL]).",
+        ),
+    ]
+    result = redact_lines(lines, default_profile())
+    output = "\n".join(line.text for line in result.redacted_lines)
+    for name in [
+        "Ehret, Phillip",
+        "Keith Stover",
+        "Laurie Odelius",
+        "Boulanger, Steve",
+        "Phillip Ehret",
+        "Maxime Lauzon-Bray",
+        "Gilbert Sabat",
+        "Dexter Alexander",
+    ]:
+        assert name not in output
+    assert output.count("[REDACTED_PERSON]") == 8
+
+
+def test_redacts_explicit_first_and_last_name_fields() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="First Name: Phillip Last Name: Ehret"),
+        InputLine(page=1, line_no=2, text="Given Name = Laurie"),
+        InputLine(page=1, line_no=3, text="Surname: Odelius"),
+        InputLine(page=1, line_no=4, text="FirstName Emma LastName Gilfillan"),
+    ]
+    result = redact_lines(lines, default_profile())
+    output = "\n".join(line.text for line in result.redacted_lines)
+    for name in ["Phillip", "Ehret", "Laurie", "Odelius", "Emma", "Gilfillan"]:
+        assert name not in output
+    assert output.count("[REDACTED_PERSON]") == 6
+
+
+def test_name_tightening_preserves_technical_standalone_lines() -> None:
+    lines = [
+        InputLine(page=1, line_no=1, text="Message Hub"),
+        InputLine(page=1, line_no=2, text="Logger Standard Edition"),
+        InputLine(page=1, line_no=3, text="Technical Advisor"),
+        InputLine(page=1, line_no=4, text="Principal Product Manager"),
+        InputLine(page=1, line_no=5, text="OpenText Cybersecurity"),
+        InputLine(page=1, line_no=6, text="Enterprise Security Operations"),
+        InputLine(page=1, line_no=7, text="Pre-Sales Solution Architect"),
+    ]
+    result = redact_lines(lines, default_profile())
+    assert [line.text for line in result.redacted_lines] == [line.text for line in lines]
+
+
 def test_redacts_api_key_with_space_separator() -> None:
     lines = [InputLine(page=1, line_no=1, text="API key = abc123def456")]
     result = redact_lines(lines, default_profile())

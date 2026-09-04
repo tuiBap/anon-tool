@@ -6,6 +6,7 @@
 - Input support for `.pdf`, `.txt`, and `.docx`
 - Deterministic redaction rules (no model dependency)
 - Typed placeholders such as `[REDACTED_EMAIL]`
+- Context-aware person-name redaction for document fields, email recipients, signatures, and contact references
 - OpenText GIS/P AI policy profile aligned to the August 11, 2026 policy revision
 - Markdown output by default, with text and PDF options
 - JSON redaction report (CLI mode; script runners keep report output temporary)
@@ -127,3 +128,4 @@ Run-level behavior:
 - The built-in profile is `opentext_gisp_ai_2026_08_11`.
 - The profile redacts customer/prospect identifiers, personal data, PCI, PHI, nonpublic financial results or forecasts, internal URLs, credentials, and policy-sensitive context.
 - Policy restriction warnings, such as document-owner restrictions or explicit no-AI-processing language, mean anonymization may not make external AI processing permitted.
+- Release history is documented in [`CHANGELOG.md`](CHANGELOG.md).
