@@ -44,7 +44,7 @@ function Show-Help {
   Write-Host "  .\scripts\run_batch.ps1 [-InputDir <path>] [-OutputDir <path>] [-ReportDir <path>] [-LogDir <path>] [-ChatGPTExportDir <path>] [-ArchiveDir <path>] [-SummaryCsv <path>] [-Recurse] [-FailOnWarnings] [-StopOnError] [-MoveToArchiveOnPass] [-Help]"
   Write-Host ""
   Write-Host "Arguments:"
-  Write-Host "  -InputDir             Folder containing PDF, TXT, and DOCX files to process (default: .\runs\input)."
+  Write-Host "  -InputDir             Folder containing PDF, TXT, DOCX, MD, and EML files to process (default: .\runs\input)."
   Write-Host "  -OutputDir            Folder for sanitized outputs (default: same as InputDir)."
   Write-Host "  -ReportDir            Kept for compatibility; no redaction report JSON is written."
   Write-Host "  -LogDir               Folder for anonymization logs (default: same as InputDir)."
@@ -108,7 +108,7 @@ $searchArgs = @{
 }
 if ($Recurse) { $searchArgs["Recurse"] = $true }
 
-$supportedExtensions = @(".pdf", ".txt", ".docx")
+$supportedExtensions = @(".pdf", ".txt", ".docx", ".md", ".eml")
 $inputFiles = @(Get-ChildItem @searchArgs | Where-Object { $supportedExtensions -contains $_.Extension.ToLowerInvariant() } | Sort-Object FullName)
 if ($inputFiles.Count -eq 0) {
   Write-Step "No supported files found in $InputDir"

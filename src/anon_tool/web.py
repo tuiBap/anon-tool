@@ -102,7 +102,7 @@ def build_app() -> gr.Blocks:
                                     file_input = gr.File(
                                         label="",
                                         show_label=False,
-                                        file_types=[".pdf", ".txt", ".docx"],
+                                        file_types=[".pdf", ".txt", ".docx", ".md", ".eml"],
                                         file_count="multiple",
                                         elem_classes=["file-picker"],
                                     )
@@ -262,7 +262,7 @@ def build_app() -> gr.Blocks:
                         """
                         ## About
 
-                        Anon Tool is a local anonymization utility for redacting sensitive information from PDF, TXT, DOCX, and pasted text inputs.
+                        Anon Tool is a local anonymization utility for redacting sensitive information from PDF, TXT, DOCX, MD, EML, and pasted text inputs.
 
                         Written by David Bush.
                         """
@@ -509,7 +509,7 @@ def _load_sources(uploaded_file: Any, pasted_text: str | None) -> list[tuple[lis
 
     text = (pasted_text or "").strip("\ufeff")
     if not text.strip():
-        raise ValueError("Upload one or more PDF, TXT, or DOCX files, or paste text first.")
+        raise ValueError("Upload one or more PDF, TXT, DOCX, MD, or EML files, or paste text first.")
 
     raw_lines = text.splitlines() or [text]
     return [([InputLine(page=1, line_no=index, text=line) for index, line in enumerate(raw_lines, start=1)], "pasted-text.txt")]

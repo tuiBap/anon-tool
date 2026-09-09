@@ -8,6 +8,7 @@ import re
 from anon_tool.ingest.pdf_reader import read_pdf_lines
 from anon_tool.ingest.docx_reader import read_docx_lines
 from anon_tool.ingest.txt_reader import read_txt_lines
+from anon_tool.ingest.eml_reader import read_eml_lines
 from anon_tool.logging.audit import default_log_path, write_audit_log
 from anon_tool.output.markdown_writer import render_markdown
 from anon_tool.output.pdf_writer import write_sanitized_pdf
@@ -79,11 +80,11 @@ def main() -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="anon-tool", description="Policy-compliant PDF/TXT/DOCX anonymizer.")
+    parser = argparse.ArgumentParser(prog="anon-tool", description="Policy-compliant PDF/TXT/DOCX/MD/EML anonymizer.")
     sub = parser.add_subparsers(dest="command")
 
     redact = sub.add_parser("redact", help="Anonymize input and produce sanitized output and a report.")
-    redact.add_argument("--input", required=True, help="Input file path (.pdf, .txt, or .docx).")
+    redact.add_argument("--input", required=True, help="Input file path (.pdf, .txt, .docx, .md, or .eml).")
     redact.add_argument("--output", required=True, help="Output sanitized file path.")
     redact.add_argument(
         "--output-format",
@@ -95,7 +96,7 @@ def _build_parser() -> argparse.ArgumentParser:
     redact.add_argument("--log-file", default=None, help="Detailed audit log path.")
     redact.add_argument("--log-raw-values", default="false", help="true|false, default false.")
     redact.add_argument("--warn-threshold", type=int, default=99999, help="Non-zero exit if warnings exceed value.")
-    redact.add_argument("--input-type", choices=["auto", "pdf", "txt", "docx"], default="auto")
+    redact.add_argument("--input-type", choices=["auto", "pdf", "txt", "docx", "md", "eml"], default="auto")
     redact.add_argument("--also-write-txt", default=None, help="Optional sanitized text output path.")
     redact.add_argument("--chatgpt-export", default=None, help="Optional ChatGPT-optimized text export path.")
     redact.add_argument("--config", default=None, help="Optional YAML policy override file.")
@@ -106,6 +107,8 @@ def _resolve_input_type(path: Path, requested: str) -> str:
     if requested != "auto":
         return requested
     suffix = path.suffix.lower()
+    if suffix in {".md", ".eml"}:
+        return suffix[1:]
     if suffix == ".pdf":
         return "pdf"
     if suffix == ".txt":
@@ -118,7 +121,9 @@ def _resolve_input_type(path: Path, requested: str) -> str:
 def _read_input(path: Path, input_type: str) -> list[InputLine]:
     if input_type == "pdf":
         return read_pdf_lines(path)
-    if input_type == "txt":
+    if input_type == "eml":
+        return read_eml_lines(path)
+    if input_type in {"txt", "md"}:
         return read_txt_lines(path)
     if input_type == "docx":
         return read_docx_lines(path)
