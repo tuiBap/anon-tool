@@ -57,3 +57,51 @@ def test_reads_docx_lines(tmp_path: Path) -> None:
         "Phone: 847-267-9330",
         "Case | 12345678",
     ]
+
+
+@pytest.mark.parametrize("suffix", ["md", "eml", "MD", "EML"])
+def test_resolves_new_input_types(suffix: str) -> None:
+    assert _resolve_input_type(Path(f"case.{suffix}"), "auto") == suffix.lower()
+
+
+def test_reads_markdown_without_losing_syntax(tmp_path: Path) -> None:
+    path = tmp_path / "case.md"
+    path.write_text("# Case\n\n- **Contact**: person@example.com\n", encoding="utf-8")
+    lines = _read_input(path, "md")
+    assert [line.text for line in lines] == ["# Case", "", "- **Contact**: person@example.com"]
+    assert [line.line_no for line in lines] == [1, 2, 3]
+
+
+def test_reads_decoded_email_and_skips_attachments(tmp_path: Path) -> None:
+    from email.message import EmailMessage
+
+    message = EmailMessage()
+    message["From"] = "Jos? <person@example.com>"
+    message["Subject"] = "R?sum?"
+    message.set_content("Contact caf?@example.com", cte="base64")
+    message.add_alternative("<p>Duplicate alternative</p>", subtype="html")
+    message.add_attachment(b"attachment secret", maintype="application", subtype="octet-stream", filename="secret.bin")
+    path = tmp_path / "case.eml"
+    path.write_bytes(message.as_bytes())
+    lines = _read_input(path, "eml")
+    text = "\n".join(line.text for line in lines)
+    assert "Jos?" in text
+    assert "Subject: R?sum?" in text
+    assert "Contact caf?@example.com" in text
+    assert "Duplicate alternative" not in text
+    assert "attachment secret" not in text
+    assert [line.line_no for line in lines] == list(range(1, len(lines) + 1))
+
+
+def test_reads_html_only_email(tmp_path: Path) -> None:
+    from email.message import EmailMessage
+
+    message = EmailMessage()
+    message.set_content("<style>hidden</style><p>A &amp; B</p><p>person@example.com</p>", subtype="html", charset="iso-8859-1", cte="quoted-printable")
+    path = tmp_path / "html.eml"
+    path.write_bytes(message.as_bytes())
+    text = "\n".join(line.text for line in _read_input(path, "eml"))
+    assert "A & B" in text
+    assert "person@example.com" in text
+    assert "<p>" not in text
+    assert "hidden" not in text

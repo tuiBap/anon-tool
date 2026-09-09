@@ -2,6 +2,18 @@
 
 All notable changes to anon-tool are documented in this file.
 
+## 0.2.0 - 2026-09-09
+
+### Added
+
+- Markdown (`.md`) and email message (`.eml`) inputs in the CLI, web uploader, and batch script.
+- Email header and body decoding, with plain-text preference and HTML-only body conversion. Attachments are excluded.
+
+### Tests
+
+- Added input-reader and web-loading coverage; all 78 tests pass.
+- Smoke-tested automatic and explicit CLI input selection, mixed-file web processing, and batch processing with Markdown, encoded plain-text email, and HTML-only email. Verified redaction and attachment exclusion.
+
 ## 0.1.1 - 2026-09-04
 
 ### Changed

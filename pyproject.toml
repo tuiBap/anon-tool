@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anon-tool"
-version = "0.1.1"
-description = "Policy-compliant PDF/TXT/DOCX anonymizer for CRM case summaries."
+version = "0.2.0"
+description = "Policy-compliant PDF/TXT/DOCX/MD/EML anonymizer for CRM case summaries."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

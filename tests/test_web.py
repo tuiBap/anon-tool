@@ -284,3 +284,16 @@ def test_refreshing_saved_outputs_applies_retention_policy(tmp_path, monkeypatch
 
     assert refreshed[0] == []
     assert not expired.exists()
+
+
+@pytest.mark.parametrize("suffix, content, expected", [
+    ("md", "# Case\nContact person@example.com", "# Case"),
+    ("eml", "Subject: Case\n\nContact person@example.com", "Subject: Case"),
+])
+def test_web_loads_additional_formats(tmp_path, suffix, content, expected) -> None:
+    path = tmp_path / f"case.{suffix}"
+    path.write_text(content, encoding="utf-8")
+    sources = _load_sources([str(path)], None)
+    assert sources[0][1] == path.name
+    assert sources[0][0][0].text == expected
+    assert any("person@example.com" in line.text for line in sources[0][0])

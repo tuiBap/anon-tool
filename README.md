@@ -3,7 +3,7 @@
 `anon-tool` is a local Python CLI for policy-aligned anonymization of CRM case exports.
 
 ## Features
-- Input support for `.pdf`, `.txt`, and `.docx`
+- Input support for `.pdf`, `.txt`, `.docx`, `.md`, and `.eml`
 - Deterministic redaction rules (no model dependency)
 - Typed placeholders such as `[REDACTED_EMAIL]`
 - Context-aware person-name redaction for document fields, email recipients, signatures, and contact references
@@ -42,13 +42,13 @@ If you installed the package and your Python scripts directory is on `PATH`, thi
 anon-tool-web
 ```
 
-The web UI runs locally, uses the CPU processing path, and supports PDF, TXT, DOCX, or pasted text input.
+The web UI runs locally, uses the CPU processing path, and supports PDF, TXT, DOCX, MD, EML, or pasted text input.
 
 ### Options
 - `--log-file <path>`
 - `--log-raw-values true|false` (default `false`)
 - `--warn-threshold <int>` (default `99999`)
-- `--input-type auto|pdf|txt|docx` (default `auto`)
+- `--input-type auto|pdf|txt|docx|md|eml` (default `auto`)
 - `--output-format markdown|text|pdf` (default `markdown`)
 - `--also-write-txt <path>`
 - `--chatgpt-export <path>`
@@ -73,7 +73,7 @@ Default output location for `validate_case.ps1`:
 Use this structure for repeatable runs:
 ```text
 runs/
-  input/      # place raw PDF, TXT, and DOCX files here
+  input/      # place raw PDF, TXT, DOCX, MD, and EML files here
   output/     # sanitized Markdown by default
   reports/    # retained for CLI/manual use
   logs/       # redaction logs
@@ -90,7 +90,7 @@ Batch options:
 
 | Option | Description | Default |
 |---|---|---|
-| `-InputDir` | Folder to scan for PDF, TXT, and DOCX files | `.\\runs\\input` |
+| `-InputDir` | Folder to scan for PDF, TXT, DOCX, MD, and EML files | `.\\runs\\input` |
 | `-OutputDir` | Folder for sanitized Markdown outputs | same as `-InputDir` |
 | `-ReportDir` | Kept for compatibility; batch runs use temporary reports | `.\\runs\\reports` |
 | `-LogDir` | Folder for redaction logs | same as `-InputDir` |
@@ -129,3 +129,5 @@ Run-level behavior:
 - The profile redacts customer/prospect identifiers, personal data, PCI, PHI, nonpublic financial results or forecasts, internal URLs, credentials, and policy-sensitive context.
 - Policy restriction warnings, such as document-owner restrictions or explicit no-AI-processing language, mean anonymization may not make external AI processing permitted.
 - Release history is documented in [`CHANGELOG.md`](CHANGELOG.md).
+
+Markdown inputs preserve source syntax for redaction. EML inputs decode email headers and the message body, preferring plain text and converting HTML-only bodies to text. Email attachments are excluded; extract and process supported attachments separately. Outputs use the existing Markdown, text, or PDF formats.

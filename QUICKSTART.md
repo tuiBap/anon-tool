@@ -46,7 +46,7 @@ The installed shortcut `anon-tool-web` may not work on Windows unless your Pytho
 
 ## 5) Standard folders
 Use these repo folders:
-- `runs/input` -> put raw PDF, TXT, and DOCX files here
+- `runs/input` -> put raw PDF, TXT, DOCX, MD, and EML files here
 - `runs/output` -> sanitized Markdown output by default
 - `runs/reports` -> retained for CLI/manual report output
 - `runs/logs` -> detailed logs
@@ -68,7 +68,7 @@ Expected result:
 - Optional override: add `-WorkDir "C:\some\other\folder"`
 
 ## 7) Batch run for multiple files
-Put PDF, TXT, or DOCX files in `runs/input`, then:
+Put PDF, TXT, DOCX, MD, or EML files in `runs/input`, then:
 ```powershell
 .\scripts\run_batch.ps1 -FailOnWarnings -MoveToArchiveOnPass
 ```
